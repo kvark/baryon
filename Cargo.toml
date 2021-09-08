@@ -1,0 +1,10 @@
+[package]
+name = "baryon"
+version = "0.2.0"
+edition = "2018"
+license = "MIT"
+description = "Fast prototyping 3D engine"
+repository = "https://github.com/kvark/baryon"
+
+[dependencies]
+mint = "0.5"

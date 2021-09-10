@@ -15,5 +15,8 @@ jobs:
       with:
           toolchain: stable
 
+    - name: Check Basics
+      run: cargo check --no-default-features
+
     - name: Test All
       run: cargo test --all-features

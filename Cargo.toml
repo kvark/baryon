@@ -2,9 +2,15 @@
 name = "baryon"
 version = "0.2.0"
 edition = "2018"
+resolver = "2"
 license = "MIT"
 description = "Fast prototyping 3D engine"
 repository = "https://github.com/kvark/baryon"
 
+[features]
+
 [dependencies]
 mint = "0.5"
+pollster = "0.2"
+wgpu = "0.10"
+winit = "0.25"

@@ -1,3 +1,6 @@
+#[cfg(feature = "winit")]
+pub mod window;
+
 /// Order of components is: A, R, G, B
 #[derive(Clone, Copy, Debug, Hash, PartialEq, PartialOrd)]
 pub struct Color(pub u32);
@@ -56,57 +59,7 @@ impl Default for Color {
     }
 }
 
-pub struct Window {
-    event_loop: winit::event_loop::EventLoop<()>,
-    raw: winit::window::Window,
-}
-
-#[derive(Default)]
-pub struct WindowBuilder {
-    title: Option<String>,
-    size: Option<wgpu::Extent3d>,
-}
-
-impl Window {
-    pub fn new() -> WindowBuilder {
-        WindowBuilder::default()
-    }
-}
-
-impl WindowBuilder {
-    pub fn title(self, title: &str) -> Self {
-        Self {
-            title: Some(title.to_string()),
-            ..self
-        }
-    }
-
-    pub fn size(self, width: u32, height: u32) -> Self {
-        Self {
-            size: Some(wgpu::Extent3d {
-                width,
-                height,
-                depth_or_array_layers: 1,
-            }),
-            ..self
-        }
-    }
-
-    pub fn build(self) -> Window {
-        let event_loop = winit::event_loop::EventLoop::new();
-        let mut builder = winit::window::WindowBuilder::new();
-        if let Some(title) = self.title {
-            builder = builder.with_title(title);
-        }
-        if let Some(size) = self.size {
-            builder = builder
-                .with_inner_size(winit::dpi::Size::Physical((size.width, size.height).into()));
-        }
-        let raw = builder.build(&event_loop).unwrap();
-        Window { raw, event_loop }
-    }
-}
-
+#[cfg_attr(not(feature = "winit"), allow(dead_code))]
 struct SurfaceContext {
     raw: wgpu::Surface,
     format: wgpu::TextureFormat,
@@ -114,7 +67,7 @@ struct SurfaceContext {
 }
 
 pub struct Context {
-    instance: wgpu::Instance,
+    _instance: wgpu::Instance,
     surface: Option<SurfaceContext>,
     device: wgpu::Device,
     queue: wgpu::Queue,
@@ -122,12 +75,16 @@ pub struct Context {
 
 #[derive(Default)]
 pub struct ContextBuilder<'a> {
-    window: Option<&'a Window>,
+    #[cfg(feature = "winit")]
+    window: Option<&'a window::Window>,
+    #[cfg(not(feature = "winit"))]
+    _window: Option<&'a ()>,
     power_preference: wgpu::PowerPreference,
 }
 
 impl<'a> ContextBuilder<'a> {
-    pub fn screen(self, win: &'a Window) -> Self {
+    #[cfg(feature = "winit")]
+    pub fn screen(self, win: &'a window::Window) -> Self {
         Self {
             window: Some(win),
             ..self
@@ -147,8 +104,10 @@ impl<'a> ContextBuilder<'a> {
 
     pub async fn build(self) -> Context {
         let instance = wgpu::Instance::new(wgpu::Backends::PRIMARY);
+        #[cfg_attr(not(feature = "winit"), allow(unused_mut))]
         let mut surface = None;
 
+        #[cfg(feature = "winit")]
         if let Some(win) = self.window {
             let size = win.raw.inner_size();
             let raw = unsafe { instance.create_surface(&win.raw) };
@@ -166,7 +125,10 @@ impl<'a> ContextBuilder<'a> {
         let adapter = instance
             .request_adapter(&wgpu::RequestAdapterOptions {
                 power_preference: self.power_preference,
+                #[cfg(feature = "winit")]
                 compatible_surface: surface.as_ref().map(|sc| &sc.raw),
+                #[cfg(not(feature = "winit"))]
+                compatible_surface: None,
             })
             .await
             .unwrap();
@@ -175,6 +137,7 @@ impl<'a> ContextBuilder<'a> {
             .await
             .unwrap();
 
+        #[cfg(feature = "winit")]
         if let Some(ref mut suf) = surface {
             suf.format = suf.raw.get_preferred_format(&adapter).unwrap();
             suf.raw.configure(
@@ -190,7 +153,7 @@ impl<'a> ContextBuilder<'a> {
         }
 
         Context {
-            instance,
+            _instance: instance,
             surface,
             device,
             queue,
@@ -305,6 +268,7 @@ impl Scene {
 pub struct ObjectBuilder<'a, T> {
     scene: &'a mut Scene,
     node: Node,
+    #[allow(dead_code)]
     kind: T,
 }
 

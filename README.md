@@ -10,6 +10,7 @@ Just a simple API, based on good foundation.
 Dependency highlights:
   - [wgpu](https://github.com/gfx-rs/wgpu) for GPU access
   - [winit](https://github.com/rust-windowing/winit) for windowing
+  - [hecs](https://github.com/Ralith/hecs) for material ECS
 
 Conceptually, Baryon can be seen as a descendent of [three-rs](https://github.com/three-rs/three),
 pursuing similar goals, but based on a modern tech stack, and entirely disconnected from Three.js.

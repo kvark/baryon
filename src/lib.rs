@@ -205,6 +205,8 @@ impl Drop for Context {
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct NodeRef(u32);
 
+pub type EntityRef = hecs::Entity;
+
 #[derive(Debug, PartialEq)]
 struct Space {
     position: mint::Vector3<f32>,
@@ -241,6 +243,7 @@ struct Node {
 
 #[derive(Default)]
 pub struct Scene {
+    world: hecs::World,
     nodes: Vec<Node>,
     pub background: Color,
 }
@@ -256,11 +259,11 @@ impl Scene {
         }
     }
 
-    pub fn object(&mut self) -> ObjectBuilder<()> {
+    pub fn entity(&mut self) -> ObjectBuilder<hecs::EntityBuilder> {
         ObjectBuilder {
             scene: self,
             node: Node::default(),
-            kind: (),
+            kind: hecs::EntityBuilder::new(),
         }
     }
 }
@@ -268,7 +271,6 @@ impl Scene {
 pub struct ObjectBuilder<'a, T> {
     scene: &'a mut Scene,
     node: Node,
-    #[allow(dead_code)]
     kind: T,
 }
 
@@ -282,5 +284,22 @@ impl<T> ObjectBuilder<'_, T> {
 impl ObjectBuilder<'_, ()> {
     pub fn build(self) -> NodeRef {
         self.scene.add_node(self.node)
+    }
+}
+
+impl ObjectBuilder<'_, hecs::EntityBuilder> {
+    /// Register a new material component with this entity.
+    ///
+    /// The following components are recognized by the library:
+    ///   - [`Color`]
+    pub fn component<T: hecs::Component>(mut self, component: T) -> Self {
+        self.kind.add(component);
+        self
+    }
+
+    pub fn build(mut self) -> EntityRef {
+        let node = self.scene.add_node(self.node);
+        let built = self.kind.add(node).build();
+        self.scene.world.spawn(built)
     }
 }

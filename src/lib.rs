@@ -1,3 +1,6 @@
+use std::mem;
+
+pub mod pass;
 #[cfg(feature = "winit")]
 pub mod window;
 
@@ -65,11 +68,19 @@ struct SurfaceContext {
     config: wgpu::SurfaceConfiguration,
 }
 
+struct TargetContext {
+    view: wgpu::TextureView,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct TargetRef(u8);
+
 pub struct Context {
     _instance: wgpu::Instance,
     surface: Option<SurfaceContext>,
     device: wgpu::Device,
     queue: wgpu::Queue,
+    targets: Vec<TargetContext>,
 }
 
 #[derive(Default)]
@@ -104,7 +115,7 @@ impl<'a> ContextBuilder<'a> {
     pub async fn build(self) -> Context {
         let instance = wgpu::Instance::new(wgpu::Backends::PRIMARY);
         #[cfg_attr(not(feature = "winit"), allow(unused_mut))]
-        let mut surface = None;
+        let (mut surface, mut targets) = (None, Vec::new());
 
         #[cfg(feature = "winit")]
         if let Some(win) = self.window {
@@ -142,6 +153,19 @@ impl<'a> ContextBuilder<'a> {
         if let Some(ref mut suf) = surface {
             suf.config.format = suf.raw.get_preferred_format(&adapter).unwrap();
             suf.raw.configure(&device, &suf.config);
+            // create a dummy target view to occupy the first slot
+            let view = device
+                .create_texture(&wgpu::TextureDescriptor {
+                    label: Some("dummy screen"),
+                    size: wgpu::Extent3d::default(),
+                    mip_level_count: 1,
+                    sample_count: 1,
+                    dimension: wgpu::TextureDimension::D2,
+                    format: suf.config.format,
+                    usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+                })
+                .create_view(&wgpu::TextureViewDescriptor::default());
+            targets.push(TargetContext { view });
         }
 
         Context {
@@ -149,6 +173,7 @@ impl<'a> ContextBuilder<'a> {
             surface,
             device,
             queue,
+            targets,
         }
     }
 }
@@ -156,6 +181,10 @@ impl<'a> ContextBuilder<'a> {
 impl Context {
     pub fn new<'a>() -> ContextBuilder<'a> {
         ContextBuilder::default()
+    }
+
+    fn get_target(&self, tr: TargetRef) -> &TargetContext {
+        &self.targets[tr.0 as usize]
     }
 
     pub fn resize(&mut self, width: u32, height: u32) {
@@ -171,33 +200,18 @@ impl Context {
         surface.raw.configure(&self.device, &surface.config);
     }
 
-    pub fn present(&mut self, scene: &Scene) {
-        let surface = self.surface.as_mut().expect("No scren is configured!");
+    pub fn present<P: pass::Pass>(&mut self, pass: &mut P, scene: &Scene) {
+        let surface = self.surface.as_mut().expect("No screen is configured!");
         let frame = surface.raw.get_current_frame().unwrap();
         let view = frame
             .output
             .texture
             .create_view(&wgpu::TextureViewDescriptor::default());
+        let dummy = mem::replace(&mut self.targets[0].view, view);
 
-        let mut comb = self
-            .device
-            .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
-        {
-            let _pass = comb.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: Some("screen"),
-                color_attachments: &[wgpu::RenderPassColorAttachment {
-                    view: &view,
-                    resolve_target: None,
-                    ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(scene.background.into()),
-                        store: true,
-                    },
-                }],
-                depth_stencil_attachment: None,
-            });
-        }
+        pass.draw(&[TargetRef::default()], scene, self);
 
-        self.queue.submit(vec![comb.finish()]);
+        self.targets[0].view = dummy;
     }
 }
 
@@ -209,8 +223,6 @@ impl Drop for Context {
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct NodeRef(u32);
-
-pub type EntityRef = hecs::Entity;
 
 #[derive(Debug, PartialEq)]
 struct Space {
@@ -245,6 +257,8 @@ struct Node {
     parent: NodeRef,
     local: Space,
 }
+
+pub type EntityRef = hecs::Entity;
 
 #[derive(Default)]
 pub struct Scene {

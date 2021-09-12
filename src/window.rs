@@ -1,3 +1,5 @@
+const TARGET_FRAME_TIME: f64 = 1.0 / 120.0;
+
 pub struct Window {
     event_loop: winit::event_loop::EventLoop<()>,
     pub(crate) raw: winit::window::Window,
@@ -31,6 +33,7 @@ impl Window {
     }
 
     pub fn run(self, mut runner: impl 'static + FnMut(Event)) -> ! {
+        use std::time;
         use winit::{
             event::{
                 ElementState, Event as WinEvent, KeyboardInput, VirtualKeyCode as Vkc, WindowEvent,
@@ -38,9 +41,14 @@ impl Window {
             event_loop::ControlFlow,
         };
 
-        self.event_loop.run(move |event, _, control_flow| {
-            *control_flow = ControlFlow::Wait;
-            match event {
+        let mut last_update_inst = time::Instant::now();
+        let Self {
+            event_loop,
+            raw: window,
+        } = self;
+
+        event_loop.run(move |event, _, control_flow| {
+            *control_flow = match event {
                 WinEvent::WindowEvent {
                     event: WindowEvent::Resized(size),
                     ..
@@ -49,6 +57,7 @@ impl Window {
                         width: size.width,
                         height: size.height,
                     });
+                    ControlFlow::Poll
                 }
                 WinEvent::WindowEvent {
                     event:
@@ -78,18 +87,33 @@ impl Window {
                         },
                         pressed: state == ElementState::Pressed,
                     });
+                    ControlFlow::Poll
                 }
                 WinEvent::RedrawRequested(_) => {
                     runner(Event::Draw);
+                    ControlFlow::Poll
+                }
+                WinEvent::RedrawEventsCleared => {
+                    let target_frametime = time::Duration::from_secs_f64(TARGET_FRAME_TIME);
+                    let now = time::Instant::now();
+                    match target_frametime.checked_sub(last_update_inst.elapsed()) {
+                        Some(wait_time) => ControlFlow::WaitUntil(now + wait_time),
+                        None => {
+                            window.request_redraw();
+                            last_update_inst = now;
+                            ControlFlow::Poll
+                        }
+                    }
                 }
                 WinEvent::WindowEvent {
                     event: WindowEvent::CloseRequested,
                     ..
-                } => *control_flow = ControlFlow::Exit,
+                } => ControlFlow::Exit,
                 WinEvent::LoopDestroyed => {
                     runner(Event::Exit);
+                    ControlFlow::Exit
                 }
-                _ => {}
+                _ => ControlFlow::Poll,
             }
         })
     }

@@ -7,8 +7,11 @@ fn main() {
     scene.background = baryon::Color(0xFF203040);
 
     window.run(move |event| match event {
+        Event::Resize { width, height } => {
+            context.resize(width, height);
+        }
         Event::Draw => {
-            context.render_screen(&scene);
+            context.present(&scene);
         }
         _ => {}
     })

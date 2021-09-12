@@ -62,8 +62,7 @@ impl Default for Color {
 #[cfg_attr(not(feature = "winit"), allow(dead_code))]
 struct SurfaceContext {
     raw: wgpu::Surface,
-    format: wgpu::TextureFormat,
-    size: wgpu::Extent3d,
+    config: wgpu::SurfaceConfiguration,
 }
 
 pub struct Context {
@@ -113,11 +112,13 @@ impl<'a> ContextBuilder<'a> {
             let raw = unsafe { instance.create_surface(&win.raw) };
             surface = Some(SurfaceContext {
                 raw,
-                format: wgpu::TextureFormat::Rgba8Unorm,
-                size: wgpu::Extent3d {
+                config: wgpu::SurfaceConfiguration {
+                    usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+                    // using an erroneous format, it is changed before used
+                    format: wgpu::TextureFormat::Depth24Plus,
                     width: size.width,
                     height: size.height,
-                    depth_or_array_layers: 1,
+                    present_mode: wgpu::PresentMode::Mailbox,
                 },
             });
         }
@@ -139,17 +140,8 @@ impl<'a> ContextBuilder<'a> {
 
         #[cfg(feature = "winit")]
         if let Some(ref mut suf) = surface {
-            suf.format = suf.raw.get_preferred_format(&adapter).unwrap();
-            suf.raw.configure(
-                &device,
-                &wgpu::SurfaceConfiguration {
-                    usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
-                    format: suf.format,
-                    width: suf.size.width,
-                    height: suf.size.height,
-                    present_mode: wgpu::PresentMode::Mailbox,
-                },
-            );
+            suf.config.format = suf.raw.get_preferred_format(&adapter).unwrap();
+            suf.raw.configure(&device, &suf.config);
         }
 
         Context {
@@ -166,7 +158,20 @@ impl Context {
         ContextBuilder::default()
     }
 
-    pub fn render_screen(&mut self, scene: &Scene) {
+    pub fn resize(&mut self, width: u32, height: u32) {
+        let surface = match self.surface {
+            Some(ref mut suf) => suf,
+            None => return,
+        };
+        if (surface.config.width, surface.config.height) == (width, height) {
+            return;
+        }
+        surface.config.width = width;
+        surface.config.height = height;
+        surface.raw.configure(&self.device, &surface.config);
+    }
+
+    pub fn present(&mut self, scene: &Scene) {
         let surface = self.surface.as_mut().expect("No scren is configured!");
         let frame = surface.raw.get_current_frame().unwrap();
         let view = frame

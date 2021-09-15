@@ -1,8 +1,26 @@
+use raw_window_handle::{HasRawWindowHandle, RawWindowHandle};
+
 const TARGET_FRAME_TIME: f64 = 1.0 / 120.0;
 
 pub struct Window {
     event_loop: winit::event_loop::EventLoop<()>,
-    pub(crate) raw: winit::window::Window,
+    raw: winit::window::Window,
+}
+
+unsafe impl HasRawWindowHandle for Window {
+    fn raw_window_handle(&self) -> RawWindowHandle {
+        self.raw.raw_window_handle()
+    }
+}
+
+impl baryon_core::HasWindow for Window {
+    fn size(&self) -> mint::Vector2<u32> {
+        let size = self.raw.inner_size();
+        mint::Vector2 {
+            x: size.width,
+            y: size.height,
+        }
+    }
 }
 
 #[derive(Default)]

@@ -14,5 +14,5 @@ default = []
 hecs = "0.5"
 log = "0.4"
 mint = "0.5"
+raw-window-handle = "0.3"
 wgpu = "0.10"
-winit = { version = "0.25", optional = true }

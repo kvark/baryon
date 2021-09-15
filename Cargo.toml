@@ -15,10 +15,13 @@ members = ["baryon-core"]
 [dependencies.baryon-core]
 path = "baryon-core"
 #version = "0.1"
-features = ["winit"]
 
 [dependencies]
+log = "0.4"
+mint = "0.5"
+raw-window-handle = "0.3"
 wgpu = "0.10"
+winit = "0.25"
 
 [dev-dependencies]
 pollster = "0.2"

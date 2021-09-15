@@ -1,8 +1,5 @@
-use std::{any, mem};
-
-pub mod mesh;
-#[cfg(feature = "winit")]
-pub mod window;
+use raw_window_handle::HasRawWindowHandle;
+use std::{any, marker::PhantomData, mem};
 
 /// Can be specified as 0xAARRGGBB
 #[derive(Clone, Copy, Debug, Hash, PartialEq, PartialOrd)]
@@ -62,7 +59,10 @@ impl Default for Color {
     }
 }
 
-#[cfg_attr(not(feature = "winit"), allow(dead_code))]
+pub trait HasWindow: HasRawWindowHandle {
+    fn size(&self) -> mint::Vector2<u32>;
+}
+
 struct SurfaceContext {
     raw: wgpu::Surface,
     config: wgpu::SurfaceConfiguration,
@@ -76,31 +76,20 @@ struct TargetContext {
 pub struct TargetRef(u8);
 
 pub struct Context {
-    _instance: wgpu::Instance,
+    #[allow(unused)]
+    instance: wgpu::Instance,
     surface: Option<SurfaceContext>,
     device: wgpu::Device,
     queue: wgpu::Queue,
     targets: Vec<TargetContext>,
 }
 
-#[derive(Default)]
-pub struct ContextBuilder<'a> {
-    #[cfg(feature = "winit")]
-    window: Option<&'a window::Window>,
-    #[cfg(not(feature = "winit"))]
-    _window: Option<&'a ()>,
+#[derive(Default, Debug)]
+pub struct ContextBuilder {
     power_preference: wgpu::PowerPreference,
 }
 
-impl<'a> ContextBuilder<'a> {
-    #[cfg(feature = "winit")]
-    pub fn screen(self, win: &'a window::Window) -> Self {
-        Self {
-            window: Some(win),
-            ..self
-        }
-    }
-
+impl ContextBuilder {
     pub fn power_hungry(self, hungry: bool) -> Self {
         Self {
             power_preference: if hungry {
@@ -112,74 +101,86 @@ impl<'a> ContextBuilder<'a> {
         }
     }
 
-    pub async fn build(self) -> Context {
+    pub async fn build_offscreen(self) -> Context {
         let instance = wgpu::Instance::new(wgpu::Backends::PRIMARY);
-        #[cfg_attr(not(feature = "winit"), allow(unused_mut))]
-        let (mut surface, mut targets) = (None, Vec::new());
-
-        #[cfg(feature = "winit")]
-        if let Some(win) = self.window {
-            let size = win.raw.inner_size();
-            let raw = unsafe { instance.create_surface(&win.raw) };
-            surface = Some(SurfaceContext {
-                raw,
-                config: wgpu::SurfaceConfiguration {
-                    usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
-                    // using an erroneous format, it is changed before used
-                    format: wgpu::TextureFormat::Depth24Plus,
-                    width: size.width,
-                    height: size.height,
-                    present_mode: wgpu::PresentMode::Mailbox,
-                },
-            });
-        }
-
         let adapter = instance
             .request_adapter(&wgpu::RequestAdapterOptions {
                 power_preference: self.power_preference,
-                #[cfg(feature = "winit")]
-                compatible_surface: surface.as_ref().map(|sc| &sc.raw),
-                #[cfg(not(feature = "winit"))]
                 compatible_surface: None,
             })
             .await
             .unwrap();
+
         let (device, queue) = adapter
             .request_device(&wgpu::DeviceDescriptor::default(), None)
             .await
             .unwrap();
 
-        #[cfg(feature = "winit")]
-        if let Some(ref mut suf) = surface {
-            suf.config.format = suf.raw.get_preferred_format(&adapter).unwrap();
-            suf.raw.configure(&device, &suf.config);
-            // create a dummy target view to occupy the first slot
-            let view = device
-                .create_texture(&wgpu::TextureDescriptor {
-                    label: Some("dummy screen"),
-                    size: wgpu::Extent3d::default(),
-                    mip_level_count: 1,
-                    sample_count: 1,
-                    dimension: wgpu::TextureDimension::D2,
-                    format: suf.config.format,
-                    usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
-                })
-                .create_view(&wgpu::TextureViewDescriptor::default());
-            targets.push(TargetContext { view });
-        }
-
         Context {
-            _instance: instance,
-            surface,
+            instance,
+            surface: None,
             device,
             queue,
-            targets,
+            targets: Vec::new(),
+        }
+    }
+
+    pub async fn build<W: HasWindow>(self, window: &W) -> Context {
+        let instance = wgpu::Instance::new(wgpu::Backends::PRIMARY);
+
+        let size = window.size();
+        let mut surface = SurfaceContext {
+            raw: unsafe { instance.create_surface(window) },
+            config: wgpu::SurfaceConfiguration {
+                usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+                // using an erroneous format, it is changed before used
+                format: wgpu::TextureFormat::Depth24Plus,
+                width: size.x,
+                height: size.y,
+                present_mode: wgpu::PresentMode::Mailbox,
+            },
+        };
+
+        let adapter = instance
+            .request_adapter(&wgpu::RequestAdapterOptions {
+                power_preference: self.power_preference,
+                compatible_surface: Some(&surface.raw),
+            })
+            .await
+            .unwrap();
+
+        let (device, queue) = adapter
+            .request_device(&wgpu::DeviceDescriptor::default(), None)
+            .await
+            .unwrap();
+
+        surface.config.format = surface.raw.get_preferred_format(&adapter).unwrap();
+        surface.raw.configure(&device, &surface.config);
+        // create a dummy target view to occupy the first slot
+        let view = device
+            .create_texture(&wgpu::TextureDescriptor {
+                label: Some("dummy screen"),
+                size: wgpu::Extent3d::default(),
+                mip_level_count: 1,
+                sample_count: 1,
+                dimension: wgpu::TextureDimension::D2,
+                format: surface.config.format,
+                usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+            })
+            .create_view(&wgpu::TextureViewDescriptor::default());
+
+        Context {
+            instance,
+            surface: Some(surface),
+            device,
+            queue,
+            targets: vec![TargetContext { view }],
         }
     }
 }
 
 impl Context {
-    pub fn new<'a>() -> ContextBuilder<'a> {
+    pub fn new() -> ContextBuilder {
         ContextBuilder::default()
     }
 
@@ -362,4 +363,9 @@ struct Mesh {
     index_stream: IndexStream,
     vertex_streams: Box<[VertexStream]>,
     vertex_count: usize,
+}
+
+pub struct Vertex<T> {
+    mesh: MeshRef,
+    _phantom: PhantomData<T>,
 }

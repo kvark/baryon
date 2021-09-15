@@ -1,0 +1,18 @@
+[package]
+name = "baryon-core"
+version = "0.1.0"
+edition = "2018"
+resolver = "2"
+license = "MIT"
+description = "Core API of Baryon 3D-engine"
+repository = "https://github.com/kvark/baryon"
+
+[features]
+default = []
+
+[dependencies]
+hecs = "0.5"
+log = "0.4"
+mint = "0.5"
+wgpu = "0.10"
+winit = { version = "0.25", optional = true }

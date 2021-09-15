@@ -7,13 +7,18 @@ license = "MIT"
 description = "Fast prototyping 3D engine"
 repository = "https://github.com/kvark/baryon"
 
+[workspace]
+members = ["baryon-core"]
+
 [features]
-default = ["winit"]
+
+[dependencies.baryon-core]
+path = "baryon-core"
+#version = "0.1"
+features = ["winit"]
 
 [dependencies]
-hecs = "0.5"
-log = "0.4"
-mint = "0.5"
-pollster = "0.2"
 wgpu = "0.10"
-winit = { version = "0.25", optional = true }
+
+[dev-dependencies]
+pollster = "0.2"

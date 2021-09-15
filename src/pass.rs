@@ -1,32 +1,24 @@
+use baryon_core::ContextDetail as _;
 use std::iter;
-
-pub trait Pass {
-    fn draw(
-        &mut self,
-        targets: &[crate::TargetRef],
-        scene: &crate::Scene,
-        context: &crate::Context,
-    );
-}
 
 pub struct Clear;
 
-impl Pass for Clear {
+impl super::Pass for Clear {
     fn draw(
         &mut self,
-        targets: &[crate::TargetRef],
+        targets: &[super::TargetRef],
         scene: &crate::Scene,
         context: &crate::Context,
     ) {
         let mut encoder = context
-            .device
+            .device()
             .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
 
         {
             let _pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("clear"),
                 color_attachments: &[wgpu::RenderPassColorAttachment {
-                    view: &context.get_target(targets[0]).view,
+                    view: context.get_target(targets[0]),
                     resolve_target: None,
                     ops: wgpu::Operations {
                         load: wgpu::LoadOp::Clear(scene.background.into()),
@@ -37,7 +29,7 @@ impl Pass for Clear {
             });
         }
 
-        context.queue.submit(iter::once(encoder.finish()));
+        context.queue().submit(iter::once(encoder.finish()));
     }
 }
 

@@ -40,3 +40,5 @@ impl Pass for Clear {
         context.queue.submit(iter::once(encoder.finish()));
     }
 }
+
+pub struct Solid {}

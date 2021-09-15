@@ -1,10 +1,11 @@
-use std::mem;
+use std::{any, mem};
 
+pub mod mesh;
 pub mod pass;
 #[cfg(feature = "winit")]
 pub mod window;
 
-/// Order of components is: A, R, G, B
+/// Can be specified as 0xAARRGGBB
 #[derive(Clone, Copy, Debug, Hash, PartialEq, PartialOrd)]
 pub struct Color(pub u32);
 
@@ -321,4 +322,26 @@ impl ObjectBuilder<'_, hecs::EntityBuilder> {
         let built = self.kind.add(node).build();
         self.scene.world.spawn(built)
     }
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct MeshRef(u32);
+
+struct IndexStream {
+    offset: wgpu::BufferAddress,
+    format: wgpu::IndexFormat,
+    count: usize,
+}
+
+struct VertexStream {
+    type_id: any::TypeId,
+    offset: wgpu::BufferAddress,
+    stride: wgpu::BufferAddress,
+}
+
+struct Mesh {
+    buffer: wgpu::Buffer,
+    index_stream: IndexStream,
+    vertex_streams: Box<[VertexStream]>,
+    vertex_count: usize,
 }

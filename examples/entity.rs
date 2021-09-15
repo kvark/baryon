@@ -2,10 +2,15 @@ fn main() {
     use baryon::window::{Event, Window};
 
     let window = Window::new().title("Clear").build();
-    let mut context = pollster::block_on(baryon::Context::new().build(&window));
+    let mut context = pollster::block_on(baryon::Context::init().build(&window));
     let mut scene = baryon::Scene::default();
     scene.background = baryon::Color(0xFF203040);
-    let _e = scene.entity().component(baryon::Color(0xFFFFFFFF)).build();
+
+    let mesh = context.add_mesh().build();
+    let _e = scene
+        .entity(mesh)
+        .component(baryon::Color(0xFFFFFFFF))
+        .build();
     let mut pass = baryon::pass::Clear; //TODO
 
     window.run(move |event| match event {

@@ -16,7 +16,7 @@ jobs:
           toolchain: stable
 
     - name: Check Basics
-      run: cargo check --no-default-features
+      run: cargo check --workspace --no-default-features
 
     - name: Test All
-      run: cargo test --all-features
+      run: cargo test --workspace --all-features

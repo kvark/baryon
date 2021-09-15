@@ -11,6 +11,7 @@ repository = "https://github.com/kvark/baryon"
 default = []
 
 [dependencies]
+bytemuck = "1.4"
 hecs = "0.5"
 log = "0.4"
 mint = "0.5"

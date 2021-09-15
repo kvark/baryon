@@ -1,5 +1,6 @@
 use raw_window_handle::HasRawWindowHandle;
-use std::{any, marker::PhantomData, mem};
+use std::{any::TypeId, marker::PhantomData, mem};
+use wgpu::util::DeviceExt as _;
 
 /// Can be specified as 0xAARRGGBB
 #[derive(Clone, Copy, Debug, Hash, PartialEq, PartialOrd)]
@@ -82,6 +83,7 @@ pub struct Context {
     device: wgpu::Device,
     queue: wgpu::Queue,
     targets: Vec<TargetContext>,
+    meshes: Vec<Mesh>,
 }
 
 #[derive(Default, Debug)]
@@ -122,6 +124,7 @@ impl ContextBuilder {
             device,
             queue,
             targets: Vec::new(),
+            meshes: Vec::new(),
         }
     }
 
@@ -175,12 +178,13 @@ impl ContextBuilder {
             device,
             queue,
             targets: vec![TargetContext { view }],
+            meshes: Vec::new(),
         }
     }
 }
 
 impl Context {
-    pub fn new() -> ContextBuilder {
+    pub fn init() -> ContextBuilder {
         ContextBuilder::default()
     }
 
@@ -209,6 +213,17 @@ impl Context {
         pass.draw(&[TargetRef::default()], scene, self);
 
         self.targets[0].view = dummy;
+    }
+
+    pub fn add_mesh(&mut self) -> MeshBuilder {
+        MeshBuilder {
+            context: self,
+            name: String::new(),
+            data: Vec::new(),
+            vertex_count: 0,
+            index_stream: None,
+            vertex_streams: Vec::new(),
+        }
     }
 }
 
@@ -287,6 +302,11 @@ pub struct Scene {
     pub background: Color,
 }
 
+pub struct EntityKind {
+    raw: hecs::EntityBuilder,
+    mesh: MeshRef,
+}
+
 impl Scene {
     fn add_node(&mut self, node: Node) -> NodeRef {
         if node.local == Space::default() {
@@ -298,13 +318,21 @@ impl Scene {
         }
     }
 
-    pub fn entity(&mut self) -> ObjectBuilder<hecs::EntityBuilder> {
+    pub fn entity(&mut self, mesh: MeshRef) -> ObjectBuilder<EntityKind> {
         ObjectBuilder {
             scene: self,
             node: Node::default(),
-            kind: hecs::EntityBuilder::new(),
+            kind: EntityKind {
+                raw: hecs::EntityBuilder::new(),
+                mesh,
+            },
         }
     }
+}
+
+pub struct Entity {
+    pub node: NodeRef,
+    pub mesh: MeshRef,
 }
 
 pub struct ObjectBuilder<'a, T> {
@@ -326,19 +354,22 @@ impl ObjectBuilder<'_, ()> {
     }
 }
 
-impl ObjectBuilder<'_, hecs::EntityBuilder> {
+impl ObjectBuilder<'_, EntityKind> {
     /// Register a new material component with this entity.
     ///
     /// The following components are recognized by the library:
     ///   - [`Color`]
     pub fn component<T: hecs::Component>(mut self, component: T) -> Self {
-        self.kind.add(component);
+        self.kind.raw.add(component);
         self
     }
 
     pub fn build(mut self) -> EntityRef {
-        let node = self.scene.add_node(self.node);
-        let built = self.kind.add(node).build();
+        let entity = Entity {
+            node: self.scene.add_node(self.node),
+            mesh: self.kind.mesh,
+        };
+        let built = self.kind.raw.add(entity).build();
         self.scene.world.spawn(built)
     }
 }
@@ -346,26 +377,102 @@ impl ObjectBuilder<'_, hecs::EntityBuilder> {
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct MeshRef(u32);
 
-struct IndexStream {
-    offset: wgpu::BufferAddress,
-    format: wgpu::IndexFormat,
-    count: usize,
+pub struct IndexStream {
+    pub offset: wgpu::BufferAddress,
+    pub format: wgpu::IndexFormat,
+    pub count: usize,
 }
 
-struct VertexStream {
-    type_id: any::TypeId,
-    offset: wgpu::BufferAddress,
-    stride: wgpu::BufferAddress,
+pub struct VertexStream {
+    pub type_id: TypeId,
+    pub offset: wgpu::BufferAddress,
+    pub stride: wgpu::BufferAddress,
 }
 
-struct Mesh {
-    buffer: wgpu::Buffer,
-    index_stream: IndexStream,
-    vertex_streams: Box<[VertexStream]>,
+pub struct Mesh {
+    pub buffer: wgpu::Buffer,
+    pub index_stream: Option<IndexStream>,
+    pub vertex_streams: Box<[VertexStream]>,
+    pub vertex_count: usize,
+}
+
+pub struct Vertex<T>(PhantomData<T>);
+
+pub struct MeshBuilder<'a> {
+    context: &'a mut Context,
+    name: String,
+    data: Vec<u8>, // could be moved up to the context
+    index_stream: Option<IndexStream>,
+    vertex_streams: Vec<VertexStream>,
     vertex_count: usize,
 }
 
-pub struct Vertex<T> {
-    mesh: MeshRef,
-    _phantom: PhantomData<T>,
+impl MeshBuilder<'_> {
+    pub fn name(self, name: &str) -> Self {
+        Self {
+            name: name.to_string(),
+            ..self
+        }
+    }
+
+    fn append<T: bytemuck::Pod>(&mut self, data: &[T]) -> wgpu::BufferAddress {
+        let offset = self.data.len();
+        self.data.extend(bytemuck::cast_slice(data));
+        offset as _
+    }
+
+    pub fn index(mut self, data: &[u16]) -> Self {
+        assert!(self.index_stream.is_none());
+        let offset = self.append(data);
+        Self {
+            index_stream: Some(IndexStream {
+                offset,
+                format: wgpu::IndexFormat::Uint16,
+                count: data.len(),
+            }),
+            ..self
+        }
+    }
+
+    pub fn vertex<T: bytemuck::Pod>(mut self, data: &[T]) -> Self {
+        let offset = self.append(data);
+        if self.vertex_count == 0 {
+            self.vertex_count = data.len();
+        } else {
+            assert_eq!(self.vertex_count, data.len());
+        }
+        self.vertex_streams.push(VertexStream {
+            type_id: TypeId::of::<T>(),
+            offset,
+            stride: mem::size_of::<T>() as _,
+        });
+        self
+    }
+
+    pub fn build(self) -> MeshRef {
+        let index = self.context.meshes.len();
+
+        let mut usage = wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::VERTEX;
+        usage.set(wgpu::BufferUsages::INDEX, self.index_stream.is_some());
+        let buffer = self
+            .context
+            .device
+            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: if self.name.is_empty() {
+                    None
+                } else {
+                    Some(&self.name)
+                },
+                contents: &self.data,
+                usage,
+            });
+
+        self.context.meshes.push(Mesh {
+            buffer,
+            index_stream: self.index_stream,
+            vertex_streams: self.vertex_streams.into_boxed_slice(),
+            vertex_count: self.vertex_count,
+        });
+        MeshRef(index as u32)
+    }
 }

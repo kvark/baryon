@@ -12,7 +12,8 @@ members = ["baryon-core"]
 
 [features]
 
-[dependencies.baryon-core]
+[dependencies.bc]
+package = "baryon-core"
 path = "baryon-core"
 #version = "0.1"
 

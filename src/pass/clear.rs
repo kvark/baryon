@@ -1,12 +1,12 @@
-use baryon_core::ContextDetail as _;
-use std::iter;
+use bc::ContextDetail as _;
 
+#[derive(Default, Debug)]
 pub struct Clear;
 
-impl super::Pass for Clear {
+impl bc::Pass for Clear {
     fn draw(
         &mut self,
-        targets: &[super::TargetRef],
+        targets: &[crate::TargetRef],
         scene: &crate::Scene,
         context: &crate::Context,
     ) {
@@ -29,8 +29,6 @@ impl super::Pass for Clear {
             });
         }
 
-        context.queue().submit(iter::once(encoder.finish()));
+        context.queue().submit(Some(encoder.finish()));
     }
 }
-
-pub struct Solid {}

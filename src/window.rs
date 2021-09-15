@@ -13,7 +13,7 @@ unsafe impl HasRawWindowHandle for Window {
     }
 }
 
-impl baryon_core::HasWindow for Window {
+impl bc::HasWindow for Window {
     fn size(&self) -> mint::Vector2<u32> {
         let size = self.raw.inner_size();
         mint::Vector2 {

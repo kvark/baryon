@@ -1,6 +1,6 @@
 use bc::ContextDetail as _;
 
-#[derive(Default, Debug)]
+#[derive(Default)]
 pub struct Clear;
 
 impl bc::Pass for Clear {
@@ -10,6 +10,7 @@ impl bc::Pass for Clear {
         scene: &crate::Scene,
         context: &crate::Context,
     ) {
+        let target = context.get_target(targets[0]);
         let mut encoder = context
             .device()
             .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
@@ -18,7 +19,7 @@ impl bc::Pass for Clear {
             let _pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("clear"),
                 color_attachments: &[wgpu::RenderPassColorAttachment {
-                    view: context.get_target(targets[0]),
+                    view: &target.view,
                     resolve_target: None,
                     ops: wgpu::Operations {
                         load: wgpu::LoadOp::Clear(scene.background.into()),

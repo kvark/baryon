@@ -18,6 +18,9 @@ path = "baryon-core"
 #version = "0.1"
 
 [dependencies]
+bytemuck = { version = "1.4", features = ["derive"] }
+glam = { version = "0.18", features = ["mint"] }
+fxhash = "0.2"
 log = "0.4"
 mint = "0.5"
 raw-window-handle = "0.3"
@@ -25,4 +28,5 @@ wgpu = "0.10"
 winit = "0.25"
 
 [dev-dependencies]
+env_logger = "0.8"
 pollster = "0.2"

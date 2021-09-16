@@ -1,5 +1,5 @@
 use raw_window_handle::HasRawWindowHandle;
-use std::{any::TypeId, marker::PhantomData, mem};
+use std::{any::TypeId, marker::PhantomData, mem, ops};
 use wgpu::util::DeviceExt as _;
 
 /// Can be specified as 0xAARRGGBB
@@ -41,6 +41,9 @@ impl Color {
     pub fn alpha(self) -> f32 {
         self.export(3)
     }
+    pub fn into_vec4(self) -> [f32; 4] {
+        [self.red(), self.green(), self.blue(), self.alpha()]
+    }
 }
 
 impl From<Color> for wgpu::Color {
@@ -69,11 +72,13 @@ struct SurfaceContext {
     config: wgpu::SurfaceConfiguration,
 }
 
-struct TargetContext {
-    view: wgpu::TextureView,
+pub struct Target {
+    pub view: wgpu::TextureView,
+    pub format: wgpu::TextureFormat,
+    pub size: wgpu::Extent3d,
 }
 
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct TargetRef(u8);
 
 pub struct Context {
@@ -82,7 +87,7 @@ pub struct Context {
     surface: Option<SurfaceContext>,
     device: wgpu::Device,
     queue: wgpu::Queue,
-    targets: Vec<TargetContext>,
+    targets: Vec<Target>,
     meshes: Vec<Mesh>,
 }
 
@@ -157,27 +162,16 @@ impl ContextBuilder {
             .await
             .unwrap();
 
-        surface.config.format = surface.raw.get_preferred_format(&adapter).unwrap();
+        let format = surface.raw.get_preferred_format(&adapter).unwrap();
+        surface.config.format = format;
         surface.raw.configure(&device, &surface.config);
-        // create a dummy target view to occupy the first slot
-        let view = device
-            .create_texture(&wgpu::TextureDescriptor {
-                label: Some("dummy screen"),
-                size: wgpu::Extent3d::default(),
-                mip_level_count: 1,
-                sample_count: 1,
-                dimension: wgpu::TextureDimension::D2,
-                format: surface.config.format,
-                usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
-            })
-            .create_view(&wgpu::TextureViewDescriptor::default());
 
         Context {
             instance,
             surface: Some(surface),
             device,
             queue,
-            targets: vec![TargetContext { view }],
+            targets: Vec::new(),
             meshes: Vec::new(),
         }
     }
@@ -199,6 +193,11 @@ impl Context {
         surface.config.width = width;
         surface.config.height = height;
         surface.raw.configure(&self.device, &surface.config);
+        self.targets[0].size = wgpu::Extent3d {
+            width,
+            height,
+            depth_or_array_layers: 1,
+        };
     }
 
     pub fn present<P: Pass>(&mut self, pass: &mut P, scene: &Scene) {
@@ -208,11 +207,21 @@ impl Context {
             .output
             .texture
             .create_view(&wgpu::TextureViewDescriptor::default());
-        let dummy = mem::replace(&mut self.targets[0].view, view);
 
-        pass.draw(&[TargetRef::default()], scene, self);
+        let tr = TargetRef(self.targets.len() as _);
+        self.targets.push(Target {
+            view,
+            format: surface.config.format,
+            size: wgpu::Extent3d {
+                width: surface.config.width,
+                height: surface.config.height,
+                depth_or_array_layers: 1,
+            },
+        });
 
-        self.targets[0].view = dummy;
+        pass.draw(&[tr], scene, self);
+
+        self.targets.pop();
     }
 
     pub fn add_mesh(&mut self) -> MeshBuilder {
@@ -235,14 +244,18 @@ impl Drop for Context {
 
 /// Trait that exposes `Context` details that depend on `wgpu`
 pub trait ContextDetail {
-    fn get_target(&self, tr: TargetRef) -> &wgpu::TextureView;
+    fn get_target(&self, tr: TargetRef) -> &Target;
+    fn get_mesh(&self, mr: MeshRef) -> &Mesh;
     fn device(&self) -> &wgpu::Device;
     fn queue(&self) -> &wgpu::Queue;
 }
 
 impl ContextDetail for Context {
-    fn get_target(&self, tr: TargetRef) -> &wgpu::TextureView {
-        &self.targets[tr.0 as usize].view
+    fn get_target(&self, tr: TargetRef) -> &Target {
+        &self.targets[tr.0 as usize]
+    }
+    fn get_mesh(&self, mr: MeshRef) -> &Mesh {
+        &self.meshes[mr.0 as usize]
     }
     fn device(&self) -> &wgpu::Device {
         &self.device
@@ -297,9 +310,25 @@ pub type EntityRef = hecs::Entity;
 
 #[derive(Default)]
 pub struct Scene {
-    world: hecs::World,
+    pub world: hecs::World,
     nodes: Vec<Node>,
     pub background: Color,
+}
+
+pub struct BakedSpace {
+    pub pos_scale: [f32; 4],
+    pub rot: [f32; 4],
+}
+
+pub struct BakedScene {
+    nodes: Box<[BakedSpace]>,
+}
+
+impl ops::Index<NodeRef> for BakedScene {
+    type Output = BakedSpace;
+    fn index(&self, node: NodeRef) -> &BakedSpace {
+        &self.nodes[node.0 as usize]
+    }
 }
 
 pub struct EntityKind {
@@ -326,6 +355,16 @@ impl Scene {
                 raw: hecs::EntityBuilder::new(),
                 mesh,
             },
+        }
+    }
+
+    pub fn bake(&self) -> BakedScene {
+        let mut nodes = Vec::with_capacity(self.nodes.len());
+        for n in self.nodes.iter() {
+            unimplemented!()
+        }
+        BakedScene {
+            nodes: nodes.into_boxed_slice(),
         }
     }
 }
@@ -380,7 +419,7 @@ pub struct MeshRef(u32);
 pub struct IndexStream {
     pub offset: wgpu::BufferAddress,
     pub format: wgpu::IndexFormat,
-    pub count: usize,
+    pub count: u32,
 }
 
 pub struct VertexStream {
@@ -392,8 +431,16 @@ pub struct VertexStream {
 pub struct Mesh {
     pub buffer: wgpu::Buffer,
     pub index_stream: Option<IndexStream>,
-    pub vertex_streams: Box<[VertexStream]>,
-    pub vertex_count: usize,
+    vertex_streams: Box<[VertexStream]>,
+    pub vertex_count: u32,
+}
+
+impl Mesh {
+    pub fn vertex_stream<T: 'static>(&self) -> Option<&VertexStream> {
+        self.vertex_streams
+            .iter()
+            .find(|vs| vs.type_id == TypeId::of::<T>())
+    }
 }
 
 pub struct Vertex<T>(PhantomData<T>);
@@ -428,7 +475,7 @@ impl MeshBuilder<'_> {
             index_stream: Some(IndexStream {
                 offset,
                 format: wgpu::IndexFormat::Uint16,
-                count: data.len(),
+                count: data.len() as u32,
             }),
             ..self
         }
@@ -471,7 +518,7 @@ impl MeshBuilder<'_> {
             buffer,
             index_stream: self.index_stream,
             vertex_streams: self.vertex_streams.into_boxed_slice(),
-            vertex_count: self.vertex_count,
+            vertex_count: self.vertex_count as u32,
         });
         MeshRef(index as u32)
     }

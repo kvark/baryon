@@ -1,6 +1,7 @@
 fn main() {
     use baryon::window::{Event, Window};
 
+    env_logger::init();
     let window = Window::new().title("Clear").build();
     let mut context = pollster::block_on(baryon::Context::init().build(&window));
     let mut scene = baryon::Scene::default();
@@ -11,7 +12,12 @@ fn main() {
         .entity(mesh)
         .component(baryon::Color(0xFFFFFFFF))
         .build();
-    let mut pass = baryon::pass::Clear; //TODO
+    let mut pass = baryon::pass::Solid::new(
+        &baryon::pass::SolidConfig {
+            cull_back_faces: true,
+        },
+        &context,
+    );
 
     window.run(move |event| match event {
         Event::Resize { width, height } => {

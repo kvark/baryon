@@ -29,4 +29,5 @@ winit = "0.25"
 
 [dev-dependencies]
 env_logger = "0.8"
+naga = { version = "0.6", features = ["wgsl-in"] }
 pollster = "0.2"

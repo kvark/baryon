@@ -145,6 +145,7 @@ impl bc::Pass for Solid {
         &mut self,
         targets: &[crate::TargetRef],
         scene: &crate::Scene,
+        camera: &crate::Camera,
         context: &crate::Context,
     ) {
         let target = context.get_target(targets[0]);
@@ -202,10 +203,16 @@ impl bc::Pass for Solid {
         self.uniform_pool.reset();
         let queue = context.queue();
 
-        let globals = Globals {
-            view_proj: [[0.0; 4]; 4],
-        };
-        queue.write_buffer(&self.global_uniform_buf, 0, bytemuck::bytes_of(&globals));
+        {
+            let m_proj = camera.projection_matrix(target.aspect());
+            let m_view_inv = nodes[camera.node].inverse_matrix();
+            let globals = Globals {
+                view_proj: (glam::Mat4::from_cols_array_2d(&m_view_inv)
+                    * glam::Mat4::from_cols_array_2d(&m_proj))
+                .to_cols_array_2d(),
+            };
+            queue.write_buffer(&self.global_uniform_buf, 0, bytemuck::bytes_of(&globals));
+        }
 
         // pre-create the bind groups so that we don't need to do it on the fly
         let local_bgl = &self.local_bind_group_layout;
@@ -241,7 +248,7 @@ impl bc::Pass for Solid {
                     view: &target.view,
                     resolve_target: None,
                     ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(scene.background.into()),
+                        load: wgpu::LoadOp::Clear(camera.background.into()),
                         store: true,
                     },
                 }],

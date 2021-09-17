@@ -4,8 +4,9 @@ fn main() {
     env_logger::init();
     let window = Window::new().title("Clear").build();
     let mut context = pollster::block_on(baryon::Context::init().build(&window));
-    let mut scene = baryon::Scene::new();
-    scene.background = baryon::Color(0xFF203040);
+    let scene = baryon::Scene::new();
+    let mut camera = baryon::Camera::default();
+    camera.background = baryon::Color(0xFF203040);
     let mut pass = baryon::pass::Clear;
 
     window.run(move |event| match event {
@@ -13,7 +14,7 @@ fn main() {
             context.resize(width, height);
         }
         Event::Draw => {
-            context.present(&mut pass, &scene);
+            context.present(&mut pass, &scene, &camera);
         }
         _ => {}
     })

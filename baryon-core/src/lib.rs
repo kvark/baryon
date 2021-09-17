@@ -78,6 +78,12 @@ pub struct Target {
     pub size: wgpu::Extent3d,
 }
 
+impl Target {
+    pub fn aspect(&self) -> f32 {
+        self.size.height as f32 / self.size.width as f32
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct TargetRef(u8);
 
@@ -200,7 +206,7 @@ impl Context {
         };
     }
 
-    pub fn present<P: Pass>(&mut self, pass: &mut P, scene: &Scene) {
+    pub fn present<P: Pass>(&mut self, pass: &mut P, scene: &Scene, camera: &Camera) {
         let surface = self.surface.as_mut().expect("No screen is configured!");
         let frame = surface.raw.get_current_frame().unwrap();
         let view = frame
@@ -219,7 +225,7 @@ impl Context {
             },
         });
 
-        pass.draw(&[tr], scene, self);
+        pass.draw(&[tr], scene, camera, self);
 
         self.targets.pop();
     }
@@ -266,7 +272,7 @@ impl ContextDetail for Context {
 }
 
 pub trait Pass {
-    fn draw(&mut self, targets: &[TargetRef], scene: &Scene, context: &Context);
+    fn draw(&mut self, targets: &[TargetRef], scene: &Scene, camera: &Camera, context: &Context);
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
@@ -297,6 +303,25 @@ impl Space {
             position: self.scale * (self.orientation * other.position) + self.position,
         }
     }
+
+    fn inverse(&self) -> Self {
+        let scale = 1.0 / self.scale;
+        let orientation = self.orientation.inverse();
+        let position = -scale * (orientation * self.position);
+        Self {
+            position,
+            scale,
+            orientation,
+        }
+    }
+
+    fn to_matrix(&self) -> glam::Mat4 {
+        glam::Mat4::from_scale_rotation_translation(
+            glam::Vec3::splat(self.scale),
+            self.orientation,
+            self.position,
+        )
+    }
 }
 
 #[derive(Default, Debug, PartialEq)]
@@ -310,7 +335,6 @@ pub type EntityRef = hecs::Entity;
 pub struct Scene {
     pub world: hecs::World,
     nodes: Vec<Node>,
-    pub background: Color,
 }
 
 pub struct BakedNode {
@@ -335,6 +359,10 @@ impl BakedNode {
             orientation: glam::Quat::from_array(self.rot),
         }
     }
+
+    pub fn inverse_matrix(&self) -> [[f32; 4]; 4] {
+        self.to_space().inverse().to_matrix().to_cols_array_2d()
+    }
 }
 
 pub struct BakedScene {
@@ -348,6 +376,78 @@ impl ops::Index<NodeRef> for BakedScene {
     }
 }
 
+#[derive(Clone, Debug)]
+pub enum Projection {
+    Orthographic {
+        /// The center of the projection.
+        center: mint::Vector2<f32>,
+        /// Vertical extent from the center point. The height is double the extent.
+        /// The width is derived from the height based on the current aspect ratio.
+        extent_y: f32,
+    },
+    Perspective {
+        /// Vertical field of view, in degrees.
+        /// Note: the horizontal FOV is computed based on the aspect.
+        fov_y: f32,
+    },
+}
+
+#[derive(Clone, Debug)]
+pub struct Camera {
+    pub projection: Projection,
+    /// Specify the depth range as seen by the camera.
+    /// `depth.start` maps to 0.0, and `depth.end` maps to 1.0.
+    pub depth: ops::Range<f32>,
+    pub node: NodeRef,
+    pub background: Color,
+}
+
+impl Default for Camera {
+    fn default() -> Self {
+        Self {
+            projection: Projection::Orthographic {
+                center: mint::Vector2 { x: 0.0, y: 0.0 },
+                extent_y: 1.0,
+            },
+            depth: 0.0..1.0,
+            node: NodeRef::default(),
+            background: Color::default(),
+        }
+    }
+}
+
+const DEGREES_TO_RADIANS: f32 = std::f32::consts::PI / 180.0;
+
+impl Camera {
+    pub fn projection_matrix(&self, aspect: f32) -> [[f32; 4]; 4] {
+        let matrix = match self.projection {
+            Projection::Orthographic { center, extent_y } => {
+                let extent_x = aspect * extent_y;
+                glam::Mat4::orthographic_rh(
+                    center.x - extent_x,
+                    center.x + extent_x,
+                    center.y - extent_y,
+                    center.y + extent_y,
+                    self.depth.start,
+                    self.depth.end,
+                )
+            }
+            Projection::Perspective { fov_y } => {
+                let fov = fov_y * DEGREES_TO_RADIANS;
+                if self.depth.end == f32::INFINITY {
+                    assert!(self.depth.start.is_finite());
+                    glam::Mat4::perspective_infinite_rh(fov, aspect, self.depth.start)
+                } else if self.depth.start == f32::INFINITY {
+                    glam::Mat4::perspective_infinite_reverse_rh(fov, aspect, self.depth.end)
+                } else {
+                    glam::Mat4::perspective_rh(fov, aspect, self.depth.start, self.depth.end)
+                }
+            }
+        };
+        matrix.to_cols_array_2d()
+    }
+}
+
 pub struct EntityKind {
     raw: hecs::EntityBuilder,
     mesh: MeshRef,
@@ -358,7 +458,6 @@ impl Scene {
         Self {
             world: Default::default(),
             nodes: vec![Node::default()],
-            background: Color::default(),
         }
     }
 

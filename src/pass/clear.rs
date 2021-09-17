@@ -7,7 +7,8 @@ impl bc::Pass for Clear {
     fn draw(
         &mut self,
         targets: &[crate::TargetRef],
-        scene: &crate::Scene,
+        _scene: &crate::Scene,
+        camera: &crate::Camera,
         context: &crate::Context,
     ) {
         let target = context.get_target(targets[0]);
@@ -22,7 +23,7 @@ impl bc::Pass for Clear {
                     view: &target.view,
                     resolve_target: None,
                     ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(scene.background.into()),
+                        load: wgpu::LoadOp::Clear(camera.background.into()),
                         store: true,
                     },
                 }],

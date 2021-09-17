@@ -18,14 +18,16 @@ path = "baryon-core"
 #version = "0.1"
 
 [dependencies]
+# public
+mint = "0.5"
+# private
 bytemuck = { version = "1.4", features = ["derive"] }
 glam = "0.18"
 fxhash = "0.2"
 log = "0.4"
-mint = "0.5"
 raw-window-handle = "0.3"
-wgpu = "0.10"
 winit = "0.25"
+wgpu = "0.10"
 
 [dev-dependencies]
 env_logger = "0.8"

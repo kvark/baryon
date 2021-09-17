@@ -1,4 +1,4 @@
-pub use bc::{Color, Context, MeshRef, NodeRef, Pass, Scene, TargetRef};
+pub use bc::{Camera, Color, Context, MeshRef, NodeRef, Pass, Projection, Scene, TargetRef};
 
 pub mod pass;
 pub mod window;

@@ -11,10 +11,12 @@ repository = "https://github.com/kvark/baryon"
 default = []
 
 [dependencies]
+# public
 bytemuck = "1.4"
-glam = { version = "0.18", features = ["mint"] }
 hecs = "0.5"
-log = "0.4"
 mint = "0.5"
 raw-window-handle = "0.3"
 wgpu = "0.10"
+# private
+glam = { version = "0.18", features = ["mint"] }
+log = "0.4"

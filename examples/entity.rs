@@ -62,7 +62,7 @@ fn main() {
         node: scene
             .node()
             .position([1.5f32, -5.0, 3.0].into())
-            .look_at([0.0f32; 3].into(), [0.0f32, 0.0, 1.0].into())
+            .look_at([0f32; 3].into(), [0f32, 0.0, 1.0].into())
             .build(),
         background: baryon::Color(0xFF203040),
     };

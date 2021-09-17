@@ -206,10 +206,9 @@ impl bc::Pass for Solid {
         {
             let m_proj = camera.projection_matrix(target.aspect());
             let m_view_inv = nodes[camera.node].inverse_matrix();
+            let m_final = glam::Mat4::from(m_proj) * glam::Mat4::from(m_view_inv);
             let globals = Globals {
-                view_proj: (glam::Mat4::from_cols_array_2d(&m_view_inv)
-                    * glam::Mat4::from_cols_array_2d(&m_proj))
-                .to_cols_array_2d(),
+                view_proj: m_final.to_cols_array_2d(),
             };
             queue.write_buffer(&self.global_uniform_buf, 0, bytemuck::bytes_of(&globals));
         }

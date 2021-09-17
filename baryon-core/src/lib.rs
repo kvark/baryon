@@ -1,3 +1,27 @@
+#![allow(
+    // We use loops for getting early-out of scope without closures.
+    clippy::never_loop,
+    // We don't use syntax sugar where it's not necessary.
+    clippy::match_like_matches_macro,
+    // Redundant matching is more explicit.
+    clippy::redundant_pattern_matching,
+    // Explicit lifetimes are often easier to reason about.
+    clippy::needless_lifetimes,
+    // No need for defaults in the internal types.
+    clippy::new_without_default,
+    // For some reason `rustc` can warn about these in const generics even
+    // though they are required.
+    unused_braces,
+)]
+#![warn(
+    trivial_casts,
+    trivial_numeric_casts,
+    unused_extern_crates,
+    unused_qualifications,
+    // We don't match on a reference, unless required.
+    clippy::pattern_type_mismatch,
+)]
+
 use raw_window_handle::HasRawWindowHandle;
 use std::{any::TypeId, marker::PhantomData, mem, ops};
 use wgpu::util::DeviceExt as _;
@@ -80,7 +104,7 @@ pub struct Target {
 
 impl Target {
     pub fn aspect(&self) -> f32 {
-        self.size.height as f32 / self.size.width as f32
+        self.size.width as f32 / self.size.height as f32
     }
 }
 
@@ -199,11 +223,6 @@ impl Context {
         surface.config.width = width;
         surface.config.height = height;
         surface.raw.configure(&self.device, &surface.config);
-        self.targets[0].size = wgpu::Extent3d {
-            width,
-            height,
-            depth_or_array_layers: 1,
-        };
     }
 
     pub fn present<P: Pass>(&mut self, pass: &mut P, scene: &Scene, camera: &Camera) {
@@ -361,8 +380,8 @@ impl BakedNode {
         }
     }
 
-    pub fn inverse_matrix(&self) -> [[f32; 4]; 4] {
-        self.to_space().inverse().to_matrix().to_cols_array_2d()
+    pub fn inverse_matrix(&self) -> mint::ColumnMatrix4<f32> {
+        self.to_space().inverse().to_matrix().into()
     }
 }
 
@@ -420,7 +439,7 @@ impl Default for Camera {
 const DEGREES_TO_RADIANS: f32 = std::f32::consts::PI / 180.0;
 
 impl Camera {
-    pub fn projection_matrix(&self, aspect: f32) -> [[f32; 4]; 4] {
+    pub fn projection_matrix(&self, aspect: f32) -> mint::ColumnMatrix4<f32> {
         let matrix = match self.projection {
             Projection::Orthographic { center, extent_y } => {
                 let extent_x = aspect * extent_y;
@@ -445,7 +464,7 @@ impl Camera {
                 }
             }
         };
-        matrix.to_cols_array_2d()
+        matrix.into()
     }
 }
 
@@ -527,15 +546,34 @@ impl<T> ObjectBuilder<'_, T> {
         self
     }
 
-    //TODO: should we accept `Into<mint::Vector3<>>` here?
+    //TODO: should we accept `V: Into<mint::...>` here?
     pub fn position(mut self, position: mint::Vector3<f32>) -> Self {
         self.node.local.position = position.into();
         self
     }
 
     pub fn look_at(mut self, target: mint::Vector3<f32>, up: mint::Vector3<f32>) -> Self {
-        self.node.local.orientation = glam::Quat::from_rotation_arc(glam::Vec3::Z, target.into())
+        /* // This path just doesn't work well
+        let dir = (glam::Vec3::from(target) - self.node.local.position).normalize();
+        self.node.local.orientation = glam::Quat::from_rotation_arc(-glam::Vec3::Z, dir);
             * glam::Quat::from_rotation_arc(glam::Vec3::Y, up.into());
+        let temp = glam::Quat::from_rotation_arc(glam::Vec3::Y, up.into();
+        let new_dir = temp * -glam::Vec3::Z;
+        self.node.local.orientation = glam::Quat::from_rotation_arc(-glam::Vec3::Z, dir);
+        */
+
+        let affine = glam::Affine3A::look_at_rh(self.node.local.position, target.into(), up.into());
+        let (_, rot, _) = affine.inverse().to_scale_rotation_translation();
+        // translation here is expected to match `self.node.local.position`
+        self.node.local.orientation = rot;
+
+        /* // Blocked on https://github.com/bitshifter/glam-rs/issues/235
+        let dir = self.node.local.position - glam::Vec3::from(target);
+        let f = dir.normalize();
+        let s = glam::Vec3::from(up).cross(f).normalize();
+        let u = f.cross(s);
+        self.node.local.orientation = glam::Quat::from_rotation_axes(s, u, f);
+        */
         self
     }
 }
@@ -596,7 +634,7 @@ unsafe impl<'a> hecs::DynamicBundle for &'a Prototype {
         self.type_infos.to_vec()
     }
     unsafe fn put(self, mut f: impl FnMut(*mut u8, hecs::TypeInfo)) {
-        const DUMMY_SIZE: usize = 16;
+        const DUMMY_SIZE: usize = 1;
         let mut v = [0u8; DUMMY_SIZE];
         assert!(mem::size_of::<Vertex<()>>() <= DUMMY_SIZE);
         for ts in self.type_infos.iter() {
@@ -671,7 +709,7 @@ impl MeshBuilder<'_> {
             offset,
             stride: mem::size_of::<T>() as _,
         });
-        self.type_infos.push(hecs::TypeInfo::of::<T>());
+        self.type_infos.push(hecs::TypeInfo::of::<Vertex<T>>());
         self
     }
 

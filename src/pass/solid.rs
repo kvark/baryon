@@ -178,7 +178,7 @@ impl bc::Pass for Solid {
                 label: Some("solid"),
                 layout: Some(&info.layout),
                 vertex: wgpu::VertexState {
-                    buffers: &[super::Position::layout::<0>()],
+                    buffers: &[crate::Position::layout::<0>()],
                     module: &info.shader_module,
                     entry_point: "main_vs",
                 },
@@ -219,7 +219,7 @@ impl bc::Pass for Solid {
         let entity_count = scene
             .world
             .query::<(&bc::Entity, &bc::Color)>()
-            .with::<bc::Vertex<super::Position>>()
+            .with::<bc::Vertex<crate::Position>>()
             .iter()
             .count();
         let uniform_pool_size = self.uniform_pool.buffer_count::<Locals>(entity_count);
@@ -267,7 +267,7 @@ impl bc::Pass for Solid {
             for (_, (entity, color)) in scene
                 .world
                 .query::<(&bc::Entity, &bc::Color)>()
-                .with::<bc::Vertex<super::Position>>()
+                .with::<bc::Vertex<crate::Position>>()
                 .iter()
             {
                 let space = &nodes[entity.node];
@@ -285,7 +285,7 @@ impl bc::Pass for Solid {
                 pass.set_bind_group(1, local_bg, &[bl.offset]);
 
                 let mesh = context.get_mesh(entity.mesh);
-                let pos_vs = mesh.vertex_stream::<super::Position>().unwrap();
+                let pos_vs = mesh.vertex_stream::<crate::Position>().unwrap();
                 pass.set_vertex_buffer(0, mesh.buffer.slice(pos_vs.offset..));
 
                 if let Some(ref is) = mesh.index_stream {

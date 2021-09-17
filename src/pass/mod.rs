@@ -6,26 +6,6 @@ pub use solid::{Solid, SolidConfig};
 
 use std::mem;
 
-#[repr(C)]
-#[derive(Clone, Copy, Debug, bytemuck::Pod, bytemuck::Zeroable)]
-pub struct Position {
-    pos: [f32; 3],
-}
-
-impl Position {
-    pub const fn layout<const LOCATION: u32>() -> wgpu::VertexBufferLayout<'static> {
-        wgpu::VertexBufferLayout {
-            array_stride: mem::size_of::<Position>() as u64,
-            step_mode: wgpu::VertexStepMode::Vertex,
-            attributes: &[wgpu::VertexAttribute {
-                format: wgpu::VertexFormat::Float32x3,
-                offset: 0,
-                shader_location: LOCATION + 0,
-            }],
-        }
-    }
-}
-
 fn align_up(offset: u32, align: u32) -> u32 {
     (offset + align) & (align - 1)
 }

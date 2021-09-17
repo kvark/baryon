@@ -238,6 +238,7 @@ impl Context {
             vertex_count: 0,
             index_stream: None,
             vertex_streams: Vec::new(),
+            type_infos: Vec::new(),
         }
     }
 }
@@ -471,13 +472,23 @@ impl Scene {
         }
     }
 
-    pub fn entity(&mut self, mesh: MeshRef) -> ObjectBuilder<EntityKind> {
+    pub fn node(&mut self) -> ObjectBuilder<()> {
+        ObjectBuilder {
+            scene: self,
+            node: Node::default(),
+            kind: (),
+        }
+    }
+
+    pub fn entity(&mut self, prototype: &Prototype) -> ObjectBuilder<EntityKind> {
+        let mut raw = hecs::EntityBuilder::new();
+        raw.add_bundle(prototype);
         ObjectBuilder {
             scene: self,
             node: Node::default(),
             kind: EntityKind {
-                raw: hecs::EntityBuilder::new(),
-                mesh,
+                raw,
+                mesh: prototype.reference,
             },
         }
     }
@@ -511,8 +522,20 @@ pub struct ObjectBuilder<'a, T> {
 }
 
 impl<T> ObjectBuilder<'_, T> {
+    pub fn parent(mut self, parent: NodeRef) -> Self {
+        self.node.parent = parent;
+        self
+    }
+
+    //TODO: should we accept `Into<mint::Vector3<>>` here?
     pub fn position(mut self, position: mint::Vector3<f32>) -> Self {
         self.node.local.position = position.into();
+        self
+    }
+
+    pub fn look_at(mut self, target: mint::Vector3<f32>, up: mint::Vector3<f32>) -> Self {
+        self.node.local.orientation = glam::Quat::from_rotation_arc(glam::Vec3::Z, target.into())
+            * glam::Quat::from_rotation_arc(glam::Vec3::Y, up.into());
         self
     }
 }
@@ -546,6 +569,12 @@ impl ObjectBuilder<'_, EntityKind> {
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct MeshRef(u32);
 
+pub struct Prototype {
+    pub reference: MeshRef,
+    type_ids: Box<[TypeId]>,
+    type_infos: Box<[hecs::TypeInfo]>,
+}
+
 pub struct IndexStream {
     pub offset: wgpu::BufferAddress,
     pub format: wgpu::IndexFormat,
@@ -553,9 +582,27 @@ pub struct IndexStream {
 }
 
 pub struct VertexStream {
-    pub type_id: TypeId,
+    type_id: TypeId,
     pub offset: wgpu::BufferAddress,
     pub stride: wgpu::BufferAddress,
+}
+
+//HACK: `hecs` doesn't want anybody to implement this, but we have no choice.
+unsafe impl<'a> hecs::DynamicBundle for &'a Prototype {
+    fn with_ids<T>(&self, f: impl FnOnce(&[TypeId]) -> T) -> T {
+        f(&self.type_ids)
+    }
+    fn type_info(&self) -> Vec<hecs::TypeInfo> {
+        self.type_infos.to_vec()
+    }
+    unsafe fn put(self, mut f: impl FnMut(*mut u8, hecs::TypeInfo)) {
+        const DUMMY_SIZE: usize = 16;
+        let mut v = [0u8; DUMMY_SIZE];
+        assert!(mem::size_of::<Vertex<()>>() <= DUMMY_SIZE);
+        for ts in self.type_infos.iter() {
+            f(v.as_mut_ptr(), ts.clone());
+        }
+    }
 }
 
 pub struct Mesh {
@@ -581,6 +628,7 @@ pub struct MeshBuilder<'a> {
     data: Vec<u8>, // could be moved up to the context
     index_stream: Option<IndexStream>,
     vertex_streams: Vec<VertexStream>,
+    type_infos: Vec<hecs::TypeInfo>,
     vertex_count: usize,
 }
 
@@ -623,10 +671,11 @@ impl MeshBuilder<'_> {
             offset,
             stride: mem::size_of::<T>() as _,
         });
+        self.type_infos.push(hecs::TypeInfo::of::<T>());
         self
     }
 
-    pub fn build(self) -> MeshRef {
+    pub fn build(self) -> Prototype {
         let index = self.context.meshes.len();
 
         let mut usage = wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::VERTEX;
@@ -644,12 +693,23 @@ impl MeshBuilder<'_> {
                 usage,
             });
 
+        let type_ids = self
+            .vertex_streams
+            .iter()
+            .map(|vs| vs.type_id)
+            .collect::<Vec<_>>()
+            .into_boxed_slice();
         self.context.meshes.push(Mesh {
             buffer,
             index_stream: self.index_stream,
             vertex_streams: self.vertex_streams.into_boxed_slice(),
             vertex_count: self.vertex_count as u32,
         });
-        MeshRef(index as u32)
+
+        Prototype {
+            reference: MeshRef(index as u32),
+            type_ids,
+            type_infos: self.type_infos.into_boxed_slice(),
+        }
     }
 }

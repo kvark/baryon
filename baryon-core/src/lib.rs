@@ -22,70 +22,16 @@
     clippy::pattern_type_mismatch,
 )]
 
+mod color;
+mod mesh;
+mod space;
+
 use raw_window_handle::HasRawWindowHandle;
-use std::{any::TypeId, marker::PhantomData, mem, ops};
-use wgpu::util::DeviceExt as _;
+use std::ops;
 
-/// Can be specified as 0xAARRGGBB
-#[derive(Clone, Copy, Debug, Hash, PartialEq, PartialOrd)]
-pub struct Color(pub u32);
-
-impl Color {
-    pub const BLACK_TRANSPARENT: Self = Self(0x0);
-    pub const BLACK_OPAQUE: Self = Self(0xFF000000);
-    pub const RED: Self = Self(0xFF0000FF);
-    pub const GREEN: Self = Self(0xFF00FF00);
-    pub const BLUE: Self = Self(0xFFFF0000);
-
-    fn import(value: f32) -> u32 {
-        (value.clamp(0.0, 1.0) * 255.0) as u32
-    }
-
-    pub fn new(red: f32, green: f32, blue: f32, alpha: f32) -> Self {
-        Self(
-            (Self::import(alpha) << 24)
-                | (Self::import(red) << 16)
-                | (Self::import(green) << 8)
-                | Self::import(blue),
-        )
-    }
-
-    fn export(self, index: u32) -> f32 {
-        ((self.0 >> (index << 3)) & 0xFF) as f32 / 255.0
-    }
-    pub fn red(self) -> f32 {
-        self.export(2)
-    }
-    pub fn green(self) -> f32 {
-        self.export(1)
-    }
-    pub fn blue(self) -> f32 {
-        self.export(0)
-    }
-    pub fn alpha(self) -> f32 {
-        self.export(3)
-    }
-    pub fn into_vec4(self) -> [f32; 4] {
-        [self.red(), self.green(), self.blue(), self.alpha()]
-    }
-}
-
-impl From<Color> for wgpu::Color {
-    fn from(c: Color) -> Self {
-        Self {
-            r: c.red() as f64,
-            g: c.green() as f64,
-            b: c.blue() as f64,
-            a: c.alpha() as f64,
-        }
-    }
-}
-
-impl Default for Color {
-    fn default() -> Self {
-        Color::BLACK_OPAQUE
-    }
-}
+pub use color::Color;
+pub use mesh::{IndexStream, Mesh, MeshBuilder, Prototype, Vertex, VertexStream};
+pub use space::{Camera, Projection, RawSpace};
 
 pub trait HasWindow: HasRawWindowHandle {
     fn size(&self) -> mint::Vector2<u32>;
@@ -250,15 +196,7 @@ impl Context {
     }
 
     pub fn add_mesh(&mut self) -> MeshBuilder {
-        MeshBuilder {
-            context: self,
-            name: String::new(),
-            data: Vec::new(),
-            vertex_count: 0,
-            index_stream: None,
-            vertex_streams: Vec::new(),
-            type_infos: Vec::new(),
-        }
+        MeshBuilder::new(self)
     }
 }
 
@@ -298,56 +236,10 @@ pub trait Pass {
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct NodeRef(u32);
 
-#[derive(Clone, Debug, PartialEq)]
-struct Space {
-    position: glam::Vec3,
-    scale: f32,
-    orientation: glam::Quat,
-}
-
-impl Default for Space {
-    fn default() -> Self {
-        Self {
-            position: glam::Vec3::ZERO,
-            scale: 1.0,
-            orientation: glam::Quat::IDENTITY,
-        }
-    }
-}
-
-impl Space {
-    fn combine(&self, other: &Self) -> Self {
-        Self {
-            scale: self.scale * other.scale,
-            orientation: self.orientation * other.orientation,
-            position: self.scale * (self.orientation * other.position) + self.position,
-        }
-    }
-
-    fn inverse(&self) -> Self {
-        let scale = 1.0 / self.scale;
-        let orientation = self.orientation.inverse();
-        let position = -scale * (orientation * self.position);
-        Self {
-            position,
-            scale,
-            orientation,
-        }
-    }
-
-    fn to_matrix(&self) -> glam::Mat4 {
-        glam::Mat4::from_scale_rotation_translation(
-            glam::Vec3::splat(self.scale),
-            self.orientation,
-            self.position,
-        )
-    }
-}
-
 #[derive(Default, Debug, PartialEq)]
 struct Node {
     parent: NodeRef,
-    local: Space,
+    local: space::Space,
 }
 
 pub type EntityRef = hecs::Entity;
@@ -357,114 +249,14 @@ pub struct Scene {
     nodes: Vec<Node>,
 }
 
-pub struct BakedNode {
-    pub pos_scale: [f32; 4],
-    pub rot: [f32; 4],
-}
-
-impl From<Space> for BakedNode {
-    fn from(s: Space) -> Self {
-        BakedNode {
-            pos_scale: [s.position.x, s.position.y, s.position.z, s.scale],
-            rot: s.orientation.into(),
-        }
-    }
-}
-
-impl BakedNode {
-    fn to_space(&self) -> Space {
-        Space {
-            position: glam::Vec3::new(self.pos_scale[0], self.pos_scale[1], self.pos_scale[2]),
-            scale: self.pos_scale[3],
-            orientation: glam::Quat::from_array(self.rot),
-        }
-    }
-
-    pub fn inverse_matrix(&self) -> mint::ColumnMatrix4<f32> {
-        self.to_space().inverse().to_matrix().into()
-    }
-}
-
 pub struct BakedScene {
-    nodes: Box<[BakedNode]>,
+    spaces: Box<[RawSpace]>,
 }
 
 impl ops::Index<NodeRef> for BakedScene {
-    type Output = BakedNode;
-    fn index(&self, node: NodeRef) -> &BakedNode {
-        &self.nodes[node.0 as usize]
-    }
-}
-
-#[derive(Clone, Debug)]
-pub enum Projection {
-    Orthographic {
-        /// The center of the projection.
-        center: mint::Vector2<f32>,
-        /// Vertical extent from the center point. The height is double the extent.
-        /// The width is derived from the height based on the current aspect ratio.
-        extent_y: f32,
-    },
-    Perspective {
-        /// Vertical field of view, in degrees.
-        /// Note: the horizontal FOV is computed based on the aspect.
-        fov_y: f32,
-    },
-}
-
-#[derive(Clone, Debug)]
-pub struct Camera {
-    pub projection: Projection,
-    /// Specify the depth range as seen by the camera.
-    /// `depth.start` maps to 0.0, and `depth.end` maps to 1.0.
-    pub depth: ops::Range<f32>,
-    pub node: NodeRef,
-    pub background: Color,
-}
-
-impl Default for Camera {
-    fn default() -> Self {
-        Self {
-            projection: Projection::Orthographic {
-                center: mint::Vector2 { x: 0.0, y: 0.0 },
-                extent_y: 1.0,
-            },
-            depth: 0.0..1.0,
-            node: NodeRef::default(),
-            background: Color::default(),
-        }
-    }
-}
-
-const DEGREES_TO_RADIANS: f32 = std::f32::consts::PI / 180.0;
-
-impl Camera {
-    pub fn projection_matrix(&self, aspect: f32) -> mint::ColumnMatrix4<f32> {
-        let matrix = match self.projection {
-            Projection::Orthographic { center, extent_y } => {
-                let extent_x = aspect * extent_y;
-                glam::Mat4::orthographic_rh(
-                    center.x - extent_x,
-                    center.x + extent_x,
-                    center.y - extent_y,
-                    center.y + extent_y,
-                    self.depth.start,
-                    self.depth.end,
-                )
-            }
-            Projection::Perspective { fov_y } => {
-                let fov = fov_y * DEGREES_TO_RADIANS;
-                if self.depth.end == f32::INFINITY {
-                    assert!(self.depth.start.is_finite());
-                    glam::Mat4::perspective_infinite_rh(fov, aspect, self.depth.start)
-                } else if self.depth.start == f32::INFINITY {
-                    glam::Mat4::perspective_infinite_reverse_rh(fov, aspect, self.depth.end)
-                } else {
-                    glam::Mat4::perspective_rh(fov, aspect, self.depth.start, self.depth.end)
-                }
-            }
-        };
-        matrix.into()
+    type Output = RawSpace;
+    fn index(&self, node: NodeRef) -> &RawSpace {
+        &self.spaces[node.0 as usize]
     }
 }
 
@@ -482,7 +274,7 @@ impl Scene {
     }
 
     fn add_node(&mut self, node: Node) -> NodeRef {
-        if node.local == Space::default() {
+        if node.local == space::Space::default() {
             node.parent
         } else {
             let index = self.nodes.len();
@@ -513,18 +305,18 @@ impl Scene {
     }
 
     pub fn bake(&self) -> BakedScene {
-        let mut nodes: Vec<BakedNode> = Vec::with_capacity(self.nodes.len());
+        let mut spaces: Vec<RawSpace> = Vec::with_capacity(self.nodes.len());
         for n in self.nodes.iter() {
             let space = if n.parent == NodeRef::default() {
                 n.local.clone()
             } else {
-                let parent_space = nodes[n.parent.0 as usize].to_space();
+                let parent_space = spaces[n.parent.0 as usize].to_space();
                 parent_space.combine(&n.local)
             };
-            nodes.push(space.into());
+            spaces.push(space.into());
         }
         BakedScene {
-            nodes: nodes.into_boxed_slice(),
+            spaces: spaces.into_boxed_slice(),
         }
     }
 }
@@ -543,37 +335,6 @@ pub struct ObjectBuilder<'a, T> {
 impl<T> ObjectBuilder<'_, T> {
     pub fn parent(mut self, parent: NodeRef) -> Self {
         self.node.parent = parent;
-        self
-    }
-
-    //TODO: should we accept `V: Into<mint::...>` here?
-    pub fn position(mut self, position: mint::Vector3<f32>) -> Self {
-        self.node.local.position = position.into();
-        self
-    }
-
-    pub fn look_at(mut self, target: mint::Vector3<f32>, up: mint::Vector3<f32>) -> Self {
-        /* // This path just doesn't work well
-        let dir = (glam::Vec3::from(target) - self.node.local.position).normalize();
-        self.node.local.orientation = glam::Quat::from_rotation_arc(-glam::Vec3::Z, dir);
-            * glam::Quat::from_rotation_arc(glam::Vec3::Y, up.into());
-        let temp = glam::Quat::from_rotation_arc(glam::Vec3::Y, up.into();
-        let new_dir = temp * -glam::Vec3::Z;
-        self.node.local.orientation = glam::Quat::from_rotation_arc(-glam::Vec3::Z, dir);
-        */
-
-        let affine = glam::Affine3A::look_at_rh(self.node.local.position, target.into(), up.into());
-        let (_, rot, _) = affine.inverse().to_scale_rotation_translation();
-        // translation here is expected to match `self.node.local.position`
-        self.node.local.orientation = rot;
-
-        /* // Blocked on https://github.com/bitshifter/glam-rs/issues/235
-        let dir = self.node.local.position - glam::Vec3::from(target);
-        let f = dir.normalize();
-        let s = glam::Vec3::from(up).cross(f).normalize();
-        let u = f.cross(s);
-        self.node.local.orientation = glam::Quat::from_rotation_axes(s, u, f);
-        */
         self
     }
 }
@@ -606,148 +367,3 @@ impl ObjectBuilder<'_, EntityKind> {
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct MeshRef(u32);
-
-pub struct Prototype {
-    pub reference: MeshRef,
-    type_ids: Box<[TypeId]>,
-    type_infos: Box<[hecs::TypeInfo]>,
-}
-
-pub struct IndexStream {
-    pub offset: wgpu::BufferAddress,
-    pub format: wgpu::IndexFormat,
-    pub count: u32,
-}
-
-pub struct VertexStream {
-    type_id: TypeId,
-    pub offset: wgpu::BufferAddress,
-    pub stride: wgpu::BufferAddress,
-}
-
-//HACK: `hecs` doesn't want anybody to implement this, but we have no choice.
-unsafe impl<'a> hecs::DynamicBundle for &'a Prototype {
-    fn with_ids<T>(&self, f: impl FnOnce(&[TypeId]) -> T) -> T {
-        f(&self.type_ids)
-    }
-    fn type_info(&self) -> Vec<hecs::TypeInfo> {
-        self.type_infos.to_vec()
-    }
-    unsafe fn put(self, mut f: impl FnMut(*mut u8, hecs::TypeInfo)) {
-        const DUMMY_SIZE: usize = 1;
-        let mut v = [0u8; DUMMY_SIZE];
-        assert!(mem::size_of::<Vertex<()>>() <= DUMMY_SIZE);
-        for ts in self.type_infos.iter() {
-            f(v.as_mut_ptr(), ts.clone());
-        }
-    }
-}
-
-pub struct Mesh {
-    pub buffer: wgpu::Buffer,
-    pub index_stream: Option<IndexStream>,
-    vertex_streams: Box<[VertexStream]>,
-    pub vertex_count: u32,
-}
-
-impl Mesh {
-    pub fn vertex_stream<T: 'static>(&self) -> Option<&VertexStream> {
-        self.vertex_streams
-            .iter()
-            .find(|vs| vs.type_id == TypeId::of::<T>())
-    }
-}
-
-pub struct Vertex<T>(PhantomData<T>);
-
-pub struct MeshBuilder<'a> {
-    context: &'a mut Context,
-    name: String,
-    data: Vec<u8>, // could be moved up to the context
-    index_stream: Option<IndexStream>,
-    vertex_streams: Vec<VertexStream>,
-    type_infos: Vec<hecs::TypeInfo>,
-    vertex_count: usize,
-}
-
-impl MeshBuilder<'_> {
-    pub fn name(self, name: &str) -> Self {
-        Self {
-            name: name.to_string(),
-            ..self
-        }
-    }
-
-    fn append<T: bytemuck::Pod>(&mut self, data: &[T]) -> wgpu::BufferAddress {
-        let offset = self.data.len();
-        self.data.extend(bytemuck::cast_slice(data));
-        offset as _
-    }
-
-    pub fn index(mut self, data: &[u16]) -> Self {
-        assert!(self.index_stream.is_none());
-        let offset = self.append(data);
-        Self {
-            index_stream: Some(IndexStream {
-                offset,
-                format: wgpu::IndexFormat::Uint16,
-                count: data.len() as u32,
-            }),
-            ..self
-        }
-    }
-
-    pub fn vertex<T: bytemuck::Pod>(mut self, data: &[T]) -> Self {
-        let offset = self.append(data);
-        if self.vertex_count == 0 {
-            self.vertex_count = data.len();
-        } else {
-            assert_eq!(self.vertex_count, data.len());
-        }
-        self.vertex_streams.push(VertexStream {
-            type_id: TypeId::of::<T>(),
-            offset,
-            stride: mem::size_of::<T>() as _,
-        });
-        self.type_infos.push(hecs::TypeInfo::of::<Vertex<T>>());
-        self
-    }
-
-    pub fn build(self) -> Prototype {
-        let index = self.context.meshes.len();
-
-        let mut usage = wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::VERTEX;
-        usage.set(wgpu::BufferUsages::INDEX, self.index_stream.is_some());
-        let buffer = self
-            .context
-            .device
-            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: if self.name.is_empty() {
-                    None
-                } else {
-                    Some(&self.name)
-                },
-                contents: &self.data,
-                usage,
-            });
-
-        let type_ids = self
-            .vertex_streams
-            .iter()
-            .map(|vs| vs.type_id)
-            .collect::<Vec<_>>()
-            .into_boxed_slice();
-        self.context.meshes.push(Mesh {
-            buffer,
-            index_stream: self.index_stream,
-            vertex_streams: self.vertex_streams.into_boxed_slice(),
-            vertex_count: self.vertex_count as u32,
-        });
-
-        Prototype {
-            reference: MeshRef(index as u32),
-            type_ids,
-            type_infos: self.type_infos.into_boxed_slice(),
-        }
-    }
-}

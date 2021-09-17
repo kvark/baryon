@@ -19,7 +19,7 @@ path = "baryon-core"
 
 [dependencies]
 bytemuck = { version = "1.4", features = ["derive"] }
-glam = { version = "0.18", features = ["mint"] }
+glam = "0.18"
 fxhash = "0.2"
 log = "0.4"
 mint = "0.5"

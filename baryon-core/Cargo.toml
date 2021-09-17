@@ -12,6 +12,7 @@ default = []
 
 [dependencies]
 bytemuck = "1.4"
+glam = { version = "0.18", features = ["mint"] }
 hecs = "0.5"
 log = "0.4"
 mint = "0.5"

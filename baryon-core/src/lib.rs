@@ -272,30 +272,29 @@ pub trait Pass {
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct NodeRef(u32);
 
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 struct Space {
-    position: mint::Vector3<f32>,
+    position: glam::Vec3,
     scale: f32,
-    orientation: mint::Quaternion<f32>,
+    orientation: glam::Quat,
 }
 
 impl Default for Space {
     fn default() -> Self {
         Self {
-            position: mint::Vector3 {
-                x: 0.0,
-                y: 0.0,
-                z: 0.0,
-            },
+            position: glam::Vec3::ZERO,
             scale: 1.0,
-            orientation: mint::Quaternion {
-                s: 1.0,
-                v: mint::Vector3 {
-                    x: 0.0,
-                    y: 0.0,
-                    z: 0.0,
-                },
-            },
+            orientation: glam::Quat::IDENTITY,
+        }
+    }
+}
+
+impl Space {
+    fn combine(&self, other: &Self) -> Self {
+        Self {
+            scale: self.scale * other.scale,
+            orientation: self.orientation * other.orientation,
+            position: self.scale * (self.orientation * other.position) + self.position,
         }
     }
 }
@@ -308,25 +307,43 @@ struct Node {
 
 pub type EntityRef = hecs::Entity;
 
-#[derive(Default)]
 pub struct Scene {
     pub world: hecs::World,
     nodes: Vec<Node>,
     pub background: Color,
 }
 
-pub struct BakedSpace {
+pub struct BakedNode {
     pub pos_scale: [f32; 4],
     pub rot: [f32; 4],
 }
 
+impl From<Space> for BakedNode {
+    fn from(s: Space) -> Self {
+        BakedNode {
+            pos_scale: [s.position.x, s.position.y, s.position.z, s.scale],
+            rot: s.orientation.into(),
+        }
+    }
+}
+
+impl BakedNode {
+    fn to_space(&self) -> Space {
+        Space {
+            position: glam::Vec3::new(self.pos_scale[0], self.pos_scale[1], self.pos_scale[2]),
+            scale: self.pos_scale[3],
+            orientation: glam::Quat::from_array(self.rot),
+        }
+    }
+}
+
 pub struct BakedScene {
-    nodes: Box<[BakedSpace]>,
+    nodes: Box<[BakedNode]>,
 }
 
 impl ops::Index<NodeRef> for BakedScene {
-    type Output = BakedSpace;
-    fn index(&self, node: NodeRef) -> &BakedSpace {
+    type Output = BakedNode;
+    fn index(&self, node: NodeRef) -> &BakedNode {
         &self.nodes[node.0 as usize]
     }
 }
@@ -337,6 +354,14 @@ pub struct EntityKind {
 }
 
 impl Scene {
+    pub fn new() -> Self {
+        Self {
+            world: Default::default(),
+            nodes: vec![Node::default()],
+            background: Color::default(),
+        }
+    }
+
     fn add_node(&mut self, node: Node) -> NodeRef {
         if node.local == Space::default() {
             node.parent
@@ -359,9 +384,15 @@ impl Scene {
     }
 
     pub fn bake(&self) -> BakedScene {
-        let mut nodes = Vec::with_capacity(self.nodes.len());
+        let mut nodes: Vec<BakedNode> = Vec::with_capacity(self.nodes.len());
         for n in self.nodes.iter() {
-            unimplemented!()
+            let space = if n.parent == NodeRef::default() {
+                n.local.clone()
+            } else {
+                let parent_space = nodes[n.parent.0 as usize].to_space();
+                parent_space.combine(&n.local)
+            };
+            nodes.push(space.into());
         }
         BakedScene {
             nodes: nodes.into_boxed_slice(),
@@ -382,7 +413,7 @@ pub struct ObjectBuilder<'a, T> {
 
 impl<T> ObjectBuilder<'_, T> {
     pub fn position(mut self, position: mint::Vector3<f32>) -> Self {
-        self.node.local.position = position;
+        self.node.local.position = position.into();
         self
     }
 }

@@ -5,12 +5,13 @@
 
 Baryon is a compact 3D engine focused on fast prototyping in code.
 No big dependencies, no fancy run-times, GUI editors, or other magic.
-Just a simple API, based on good foundation.
 
 Dependency highlights:
   - [wgpu](https://github.com/gfx-rs/wgpu) for GPU access
   - [winit](https://github.com/rust-windowing/winit) for windowing
   - [hecs](https://github.com/Ralith/hecs) for material ECS
 
-Conceptually, Baryon can be seen as a descendent of [three-rs](https://github.com/three-rs/three),
-pursuing similar goals, but based on a modern tech stack, and entirely disconnected from Three.js.
+For more features, consider [Bevy](https://github.com/bevyengine/bevy).
+For better performance, consider [Rend3](https://github.com/BVE-Reborn/rend3/).
+
+![cube-ception](etc/cubeception.png)

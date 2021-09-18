@@ -53,6 +53,17 @@ impl<T> super::ObjectBuilder<'_, T> {
         self
     }
 
+    pub fn scale(mut self, scale: f32) -> Self {
+        self.node.local.scale = scale;
+        self
+    }
+
+    pub fn orientation_around(mut self, axis: mint::Vector3<f32>, angle_deg: f32) -> Self {
+        self.node.local.orientation =
+            glam::Quat::from_axis_angle(axis.into(), angle_deg * DEGREES_TO_RADIANS);
+        self
+    }
+
     pub fn look_at(mut self, target: mint::Vector3<f32>, up: mint::Vector3<f32>) -> Self {
         /* // This path just doesn't work well
         let dir = (glam::Vec3::from(target) - self.node.local.position).normalize();
@@ -76,6 +87,32 @@ impl<T> super::ObjectBuilder<'_, T> {
         self.node.local.orientation = glam::Quat::from_rotation_axes(s, u, f);
         */
         self
+    }
+}
+
+impl super::Node {
+    pub fn pre_move(&mut self, offset: mint::Vector3<f32>) {
+        let other = Space {
+            position: offset.into(),
+            scale: 1.0,
+            orientation: glam::Quat::IDENTITY,
+        };
+        self.local = other.combine(&self.local);
+    }
+    pub fn post_move(&mut self, offset: mint::Vector3<f32>) {
+        self.local.position += glam::Vec3::from(offset);
+    }
+    pub fn pre_rotate(&mut self, axis: mint::Vector3<f32>, angle_deg: f32) {
+        self.local.orientation = self.local.orientation
+            * glam::Quat::from_axis_angle(axis.into(), angle_deg * DEGREES_TO_RADIANS);
+    }
+    pub fn post_rotate(&mut self, axis: mint::Vector3<f32>, angle_deg: f32) {
+        let other = Space {
+            position: glam::Vec3::ZERO,
+            scale: 1.0,
+            orientation: glam::Quat::from_axis_angle(axis.into(), angle_deg * DEGREES_TO_RADIANS),
+        };
+        self.local = other.combine(&self.local);
     }
 }
 

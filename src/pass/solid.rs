@@ -221,7 +221,9 @@ impl bc::Pass for Solid {
             .with::<bc::Vertex<crate::Position>>()
             .iter()
             .count();
-        let uniform_pool_size = self.uniform_pool.buffer_count::<Locals>(entity_count);
+        let uniform_pool_size = self
+            .uniform_pool
+            .prepare_for_count::<Locals>(entity_count, device);
         for uniform_buf_index in 0..uniform_pool_size {
             let key = LocalKey { uniform_buf_index };
             let binding = self.uniform_pool.binding::<Locals>(uniform_buf_index);
@@ -275,7 +277,7 @@ impl bc::Pass for Solid {
                     rot: space.rot,
                     color: color.into_vec4(),
                 };
-                let bl = self.uniform_pool.alloc(&locals, device, queue);
+                let bl = self.uniform_pool.alloc(&locals, queue);
 
                 let key = LocalKey {
                     uniform_buf_index: bl.index,

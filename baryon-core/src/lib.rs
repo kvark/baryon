@@ -237,7 +237,7 @@ pub trait Pass {
 pub struct NodeRef(u32);
 
 #[derive(Default, Debug, PartialEq)]
-struct Node {
+pub struct Node {
     parent: NodeRef,
     local: space::Space,
 }
@@ -247,6 +247,19 @@ pub type EntityRef = hecs::Entity;
 pub struct Scene {
     pub world: hecs::World,
     nodes: Vec<Node>,
+}
+
+impl ops::Index<NodeRef> for Scene {
+    type Output = Node;
+    fn index(&self, node: NodeRef) -> &Node {
+        &self.nodes[node.0 as usize]
+    }
+}
+
+impl ops::IndexMut<NodeRef> for Scene {
+    fn index_mut(&mut self, node: NodeRef) -> &mut Node {
+        &mut self.nodes[node.0 as usize]
+    }
 }
 
 pub struct BakedScene {
@@ -273,17 +286,13 @@ impl Scene {
         }
     }
 
-    fn add_node(&mut self, node: Node) -> NodeRef {
-        if node.local == space::Space::default() {
-            node.parent
-        } else {
-            let index = self.nodes.len();
-            self.nodes.push(node);
-            NodeRef(index as u32)
-        }
+    fn add_node_impl(&mut self, node: Node) -> NodeRef {
+        let index = self.nodes.len();
+        self.nodes.push(node);
+        NodeRef(index as u32)
     }
 
-    pub fn node(&mut self) -> ObjectBuilder<()> {
+    pub fn add_node(&mut self) -> ObjectBuilder<()> {
         ObjectBuilder {
             scene: self,
             node: Node::default(),
@@ -291,7 +300,7 @@ impl Scene {
         }
     }
 
-    pub fn entity(&mut self, prototype: &Prototype) -> ObjectBuilder<EntityKind> {
+    pub fn add_entity(&mut self, prototype: &Prototype) -> ObjectBuilder<EntityKind> {
         let mut raw = hecs::EntityBuilder::new();
         raw.add_bundle(prototype);
         ObjectBuilder {
@@ -341,7 +350,7 @@ impl<T> ObjectBuilder<'_, T> {
 
 impl ObjectBuilder<'_, ()> {
     pub fn build(self) -> NodeRef {
-        self.scene.add_node(self.node)
+        self.scene.add_node_impl(self.node)
     }
 }
 
@@ -357,7 +366,11 @@ impl ObjectBuilder<'_, EntityKind> {
 
     pub fn build(mut self) -> EntityRef {
         let entity = Entity {
-            node: self.scene.add_node(self.node),
+            node: if self.node.local == space::Space::default() {
+                self.node.parent
+            } else {
+                self.scene.add_node_impl(self.node)
+            },
             mesh: self.kind.mesh,
         };
         let built = self.kind.raw.add(entity).build();

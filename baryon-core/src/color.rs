@@ -2,6 +2,8 @@
 #[derive(Clone, Copy, Debug, Hash, PartialEq, PartialOrd)]
 pub struct Color(pub u32);
 
+const GAMMA: f32 = 2.2;
+
 impl Color {
     pub const BLACK_TRANSPARENT: Self = Self(0x0);
     pub const BLACK_OPAQUE: Self = Self(0xFF000000);
@@ -23,7 +25,7 @@ impl Color {
     }
 
     fn export(self, index: u32) -> f32 {
-        ((self.0 >> (index << 3)) & 0xFF) as f32 / 255.0
+        (((self.0 >> (index << 3)) & 0xFF) as f32 / 255.0).powf(GAMMA)
     }
     pub fn red(self) -> f32 {
         self.export(2)

@@ -2,7 +2,7 @@ fn main() {
     use baryon::window::{Event, Window};
 
     env_logger::init();
-    let window = Window::new().title("Clear").build();
+    let window = Window::new().title("Empty").build();
     let mut context = pollster::block_on(baryon::Context::init().build(&window));
     let scene = baryon::Scene::new();
     let mut camera = baryon::Camera::default();

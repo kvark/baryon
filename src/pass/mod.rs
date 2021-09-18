@@ -7,7 +7,7 @@ pub use solid::{Solid, SolidConfig};
 use std::mem;
 
 fn align_up(offset: u32, align: u32) -> u32 {
-    (offset + align) & (align - 1)
+    (offset + align - 1) & !(align - 1)
 }
 
 struct BufferPool {
@@ -46,12 +46,24 @@ impl BufferPool {
         }
     }
 
-    fn buffer_count<T>(&self, count: usize) -> usize {
+    fn prepare_for_count<T>(&mut self, count: usize, device: &wgpu::Device) -> usize {
         if count == 0 {
-            0
-        } else {
-            1 + (count * mem::size_of::<T>() - 1) / (self.chunk_size as usize)
+            return 0;
         }
+        let size_per_element = align_up(mem::size_of::<T>() as u32, self.alignment);
+        let elements_per_chunk = self.chunk_size / size_per_element;
+        let buf_count = 1 + (count - 1) / (elements_per_chunk as usize);
+
+        while self.buffers.len() < buf_count {
+            self.buffers
+                .push(device.create_buffer(&wgpu::BufferDescriptor {
+                    label: Some(self.label),
+                    size: self.chunk_size as wgpu::BufferAddress,
+                    usage: self.usage,
+                    mapped_at_creation: false,
+                }));
+        }
+        buf_count
     }
 
     //TODO: consider lifting `T` up
@@ -63,26 +75,12 @@ impl BufferPool {
         }
     }
 
-    fn alloc<T: bytemuck::Pod>(
-        &mut self,
-        object: &T,
-        device: &wgpu::Device,
-        queue: &wgpu::Queue,
-    ) -> BufferLocation {
+    fn alloc<T: bytemuck::Pod>(&mut self, object: &T, queue: &wgpu::Queue) -> BufferLocation {
         let size = mem::size_of::<T>() as u32;
         assert!(size <= self.chunk_size);
         if self.last_offset + size > self.chunk_size {
             self.last_index += 1;
-            if self.last_index == self.buffers.len() {
-                let buffer = device.create_buffer(&wgpu::BufferDescriptor {
-                    label: Some(self.label),
-                    size: self.chunk_size as wgpu::BufferAddress,
-                    usage: self.usage,
-                    mapped_at_creation: false,
-                });
-                self.buffers.push(buffer);
-                self.last_offset = 0;
-            }
+            self.last_offset = 0;
         }
 
         let offset = self.last_offset;

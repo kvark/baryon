@@ -247,6 +247,7 @@ pub type EntityRef = hecs::Entity;
 pub struct Scene {
     pub world: hecs::World,
     nodes: Vec<Node>,
+    lights: Vec<Light>,
 }
 
 impl ops::Index<NodeRef> for Scene {
@@ -262,6 +263,19 @@ impl ops::IndexMut<NodeRef> for Scene {
     }
 }
 
+impl ops::Index<LightRef> for Scene {
+    type Output = Light;
+    fn index(&self, light: LightRef) -> &Light {
+        &self.lights[light.0 as usize]
+    }
+}
+
+impl ops::IndexMut<LightRef> for Scene {
+    fn index_mut(&mut self, light: LightRef) -> &mut Light {
+        &mut self.lights[light.0 as usize]
+    }
+}
+
 pub struct BakedScene {
     spaces: Box<[RawSpace]>,
 }
@@ -273,9 +287,15 @@ impl ops::Index<NodeRef> for BakedScene {
     }
 }
 
-pub struct EntityKind {
+pub struct EntityBuilder {
     raw: hecs::EntityBuilder,
     mesh: MeshRef,
+}
+
+pub struct LightBuilder {
+    color: Color,
+    intensity: f32,
+    kind: LightKind,
 }
 
 impl Scene {
@@ -283,6 +303,7 @@ impl Scene {
         Self {
             world: Default::default(),
             nodes: vec![Node::default()],
+            lights: Vec::new(),
         }
     }
 
@@ -300,17 +321,37 @@ impl Scene {
         }
     }
 
-    pub fn add_entity(&mut self, prototype: &Prototype) -> ObjectBuilder<EntityKind> {
+    pub fn add_entity(&mut self, prototype: &Prototype) -> ObjectBuilder<EntityBuilder> {
         let mut raw = hecs::EntityBuilder::new();
         raw.add_bundle(prototype);
         ObjectBuilder {
             scene: self,
             node: Node::default(),
-            kind: EntityKind {
+            kind: EntityBuilder {
                 raw,
                 mesh: prototype.reference,
             },
         }
+    }
+
+    fn add_light(&mut self, kind: LightKind) -> ObjectBuilder<LightBuilder> {
+        ObjectBuilder {
+            scene: self,
+            node: Node::default(),
+            kind: LightBuilder {
+                color: Color(0xFFFFFFFF),
+                intensity: 1.0,
+                kind,
+            },
+        }
+    }
+
+    pub fn add_directional_light(&mut self) -> ObjectBuilder<LightBuilder> {
+        self.add_light(LightKind::Directional)
+    }
+
+    pub fn add_point_light(&mut self) -> ObjectBuilder<LightBuilder> {
+        self.add_light(LightKind::Point)
     }
 
     pub fn bake(&self) -> BakedScene {
@@ -354,7 +395,7 @@ impl ObjectBuilder<'_, ()> {
     }
 }
 
-impl ObjectBuilder<'_, EntityKind> {
+impl ObjectBuilder<'_, EntityBuilder> {
     /// Register a new material component with this entity.
     ///
     /// The following components are recognized by the library:
@@ -378,5 +419,50 @@ impl ObjectBuilder<'_, EntityKind> {
     }
 }
 
+impl ObjectBuilder<'_, LightBuilder> {
+    pub fn intensity(mut self, intensity: f32) -> Self {
+        self.kind.intensity = intensity;
+        self
+    }
+
+    pub fn color(mut self, color: Color) -> Self {
+        self.kind.color = color;
+        self
+    }
+
+    pub fn build(self) -> LightRef {
+        let light = Light {
+            node: if self.node.local == space::Space::default() {
+                self.node.parent
+            } else {
+                self.scene.add_node_impl(self.node)
+            },
+            color: self.kind.color,
+            intensity: self.kind.intensity,
+            kind: self.kind.kind,
+        };
+        let index = self.scene.lights.len();
+        self.scene.lights.push(light);
+        LightRef(index as u32)
+    }
+}
+
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct MeshRef(u32);
+
+#[derive(Debug)]
+enum LightKind {
+    Directional,
+    Point,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct LightRef(u32);
+
+#[derive(Debug)]
+pub struct Light {
+    pub node: NodeRef,
+    pub color: Color,
+    pub intensity: f32,
+    kind: LightKind,
+}

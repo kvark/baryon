@@ -1,7 +1,9 @@
 mod clear;
+mod phong;
 mod solid;
 
 pub use clear::Clear;
+pub use phong::{Phong, PhongConfig, Shader};
 pub use solid::{Solid, SolidConfig};
 
 use std::mem;

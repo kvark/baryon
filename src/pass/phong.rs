@@ -10,11 +10,22 @@ pub enum Shader {
 }
 
 const DEPTH_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Depth24Plus;
+const INTENSITY_THRESHOLD: f32 = 0.1;
+const LIGHT_COUNT: usize = 4;
 
 #[repr(C)]
 #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
 struct Globals {
     view_proj: [[f32; 4]; 4],
+    ambient: [f32; 4],
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
+struct Light {
+    pos: [f32; 4],
+    rot: [f32; 4],
+    color_intensity: [f32; 4],
 }
 
 #[repr(C)]
@@ -23,6 +34,7 @@ struct Locals {
     pos_scale: [f32; 4],
     rot: [f32; 4],
     color: [f32; 4],
+    lights: [u32; LIGHT_COUNT],
     glossiness: f32,
 }
 
@@ -38,15 +50,34 @@ struct LocalKey {
     uniform_buf_index: usize,
 }
 
+#[derive(Clone, Copy, Debug)]
+pub struct Ambient {
+    pub color: crate::Color,
+    pub intensity: f32,
+}
+
+impl Default for Ambient {
+    fn default() -> Self {
+        Self {
+            color: crate::Color(0xFFFFFFFF),
+            intensity: 0.0,
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct PhongConfig {
     pub cull_back_faces: bool,
+    pub ambient: Ambient,
+    pub max_lights: usize,
 }
 
 impl Default for PhongConfig {
     fn default() -> Self {
         Self {
             cull_back_faces: true,
+            ambient: Ambient::default(),
+            max_lights: 16,
         }
     }
 }
@@ -60,12 +91,16 @@ struct PipelineInfo {
 pub struct Phong {
     depth_texture: Option<(wgpu::TextureView, wgpu::Extent3d)>,
     global_uniform_buf: wgpu::Buffer,
+    light_buf: wgpu::Buffer,
+    light_capacity: usize,
     global_bind_group: wgpu::BindGroup,
     local_bind_group_layout: wgpu::BindGroupLayout,
     local_bind_groups: FxHashMap<LocalKey, wgpu::BindGroup>,
     uniform_pool: super::BufferPool,
     pipeline_info: PipelineInfo,
     pipelines: FxHashMap<PipelineKey, wgpu::RenderPipeline>,
+    ambient: Ambient,
+    temp_lights: Vec<(f32, u32)>,
 }
 
 impl Phong {
@@ -96,13 +131,25 @@ impl Phong {
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
+        let light_buf = d.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("phong lights"),
+            size: (config.max_lights * mem::size_of::<Light>()) as wgpu::BufferAddress,
+            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
         let global_bind_group = d.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("phong globals"),
             layout: &global_bgl,
-            entries: &[wgpu::BindGroupEntry {
-                binding: 0,
-                resource: global_uniform_buf.as_entire_binding(),
-            }],
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: global_uniform_buf.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: light_buf.as_entire_binding(),
+                },
+            ],
         });
 
         let locals_size = mem::size_of::<Locals>() as wgpu::BufferAddress;
@@ -129,6 +176,8 @@ impl Phong {
         Self {
             depth_texture: None,
             global_uniform_buf,
+            light_capacity: config.max_lights,
+            light_buf,
             global_bind_group,
             local_bind_group_layout: local_bgl,
             local_bind_groups: Default::default(),
@@ -146,6 +195,8 @@ impl Phong {
                 },
             },
             pipelines: Default::default(),
+            ambient: config.ambient,
+            temp_lights: Vec::new(),
         }
     }
 }
@@ -231,11 +282,43 @@ impl bc::Pass for Phong {
             let m_proj = camera.projection_matrix(target.aspect());
             let m_view_inv = nodes[camera.node].inverse_matrix();
             let m_final = glam::Mat4::from(m_proj) * glam::Mat4::from(m_view_inv);
+            let ambient = self.ambient.color.into_vec4();
             let globals = Globals {
                 view_proj: m_final.to_cols_array_2d(),
+                ambient: [
+                    ambient[0] * self.ambient.intensity,
+                    ambient[1] * self.ambient.intensity,
+                    ambient[2] * self.ambient.intensity,
+                    0.0,
+                ],
             };
             queue.write_buffer(&self.global_uniform_buf, 0, bytemuck::bytes_of(&globals));
         }
+
+        let lights = scene
+            .lights()
+            .map(|(_, light)| {
+                let space = &nodes[light.node];
+                let mut pos = space.pos_scale;
+                pos[3] = match light.kind {
+                    bc::LightKind::Directional => 1.0,
+                    bc::LightKind::Point => 0.0,
+                };
+                let mut color_intensity = light.color.into_vec4();
+                color_intensity[3] = light.intensity;
+                Light {
+                    pos,
+                    rot: space.rot,
+                    color_intensity,
+                }
+            })
+            .collect::<Vec<_>>();
+        let light_count = lights.len().min(self.light_capacity);
+        queue.write_buffer(
+            &self.light_buf,
+            0,
+            bytemuck::cast_slice(&lights[..light_count]),
+        );
 
         // pre-create the bind groups so that we don't need to do it on the fly
         let local_bgl = &self.local_bind_group_layout;
@@ -297,6 +380,38 @@ impl bc::Pass for Phong {
                 .with::<bc::Vertex<crate::Normal>>()
                 .iter()
             {
+                let space = &nodes[entity.node];
+                let mesh = context.get_mesh(entity.mesh);
+                let entity_radius = mesh.bound_radius * space.pos_scale[3];
+
+                // collect the `LIGHT_COUNT` lights most affecting the entity
+                self.temp_lights.clear();
+                let entity_pos = glam::Vec3::from_slice(&space.pos_scale[..3]);
+                for (index, (_, light)) in scene.lights().enumerate() {
+                    let light_pos = glam::Vec3::from_slice(&nodes[light.node].pos_scale[..3]);
+                    let intensity = match light.kind {
+                        bc::LightKind::Point => {
+                            let distance = (entity_pos - light_pos).length();
+                            if distance <= entity_radius {
+                                light.intensity
+                            } else {
+                                let bound_distance = (distance - entity_radius).max(1.0);
+                                light.intensity / bound_distance * bound_distance
+                            }
+                        }
+                        bc::LightKind::Directional => light.intensity,
+                    };
+                    if intensity > INTENSITY_THRESHOLD {
+                        self.temp_lights.push((intensity, index as u32));
+                    }
+                }
+                self.temp_lights
+                    .sort_by_key(|&(intensity, _)| (1.0 / intensity) as usize);
+                let mut light_indices = [0u32; LIGHT_COUNT];
+                for (li, &(_, index)) in light_indices.iter_mut().zip(&self.temp_lights) {
+                    *li = index;
+                }
+
                 //TODO: check for texture coordinates
                 let key = PipelineKey {
                     target_format: target.format,
@@ -305,11 +420,11 @@ impl bc::Pass for Phong {
                 };
                 pass.set_pipeline(&self.pipelines[&key]);
 
-                let space = &nodes[entity.node];
                 let locals = Locals {
                     pos_scale: space.pos_scale,
                     rot: space.rot,
-                    color: color.into_vec4(),
+                    color: color.into_vec4_gamma(),
+                    lights: light_indices,
                     glossiness: match shader {
                         Shader::Phong { glossiness } => glossiness as f32,
                         _ => 0.0,
@@ -323,7 +438,6 @@ impl bc::Pass for Phong {
                 let local_bg = &self.local_bind_groups[&key];
                 pass.set_bind_group(1, local_bg, &[bl.offset]);
 
-                let mesh = context.get_mesh(entity.mesh);
                 let pos_vs = mesh.vertex_stream::<crate::Position>().unwrap();
                 pass.set_vertex_buffer(0, mesh.buffer.slice(pos_vs.offset..));
 

@@ -334,7 +334,7 @@ impl Scene {
         }
     }
 
-    fn add_light(&mut self, kind: LightKind) -> ObjectBuilder<LightBuilder> {
+    pub fn add_light(&mut self, kind: LightKind) -> ObjectBuilder<LightBuilder> {
         ObjectBuilder {
             scene: self,
             node: Node::default(),
@@ -352,6 +352,13 @@ impl Scene {
 
     pub fn add_point_light(&mut self) -> ObjectBuilder<LightBuilder> {
         self.add_light(LightKind::Point)
+    }
+
+    pub fn lights<'a>(&'a self) -> impl Iterator<Item = (LightRef, &'a Light)> {
+        self.lights
+            .iter()
+            .enumerate()
+            .map(|(i, light)| (LightRef(i as u32), light))
     }
 
     pub fn bake(&self) -> BakedScene {
@@ -451,7 +458,7 @@ impl ObjectBuilder<'_, LightBuilder> {
 pub struct MeshRef(u32);
 
 #[derive(Debug)]
-enum LightKind {
+pub enum LightKind {
     Directional,
     Point,
 }
@@ -464,5 +471,5 @@ pub struct Light {
     pub node: NodeRef,
     pub color: Color,
     pub intensity: f32,
-    kind: LightKind,
+    pub kind: LightKind,
 }

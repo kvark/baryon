@@ -25,7 +25,10 @@ fn parse_wgsl() {
             }
         };
 
-        let module = wgsl::parse_str(&shader).unwrap();
+        let module = match wgsl::parse_str(&shader) {
+            Ok(module) => module,
+            Err(e) => panic!("{}", e.emit_to_string(&shader)),
+        };
         //TODO: re-use the validator
         Validator::new(
             naga::valid::ValidationFlags::all(),

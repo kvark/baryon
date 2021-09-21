@@ -25,7 +25,7 @@ impl Color {
     }
 
     fn export(self, index: u32) -> f32 {
-        (((self.0 >> (index << 3)) & 0xFF) as f32 / 255.0).powf(GAMMA)
+        ((self.0 >> (index << 3)) & 0xFF) as f32 / 255.0
     }
     pub fn red(self) -> f32 {
         self.export(2)
@@ -41,6 +41,14 @@ impl Color {
     }
     pub fn into_vec4(self) -> [f32; 4] {
         [self.red(), self.green(), self.blue(), self.alpha()]
+    }
+    pub fn into_vec4_gamma(self) -> [f32; 4] {
+        [
+            self.red().powf(GAMMA),
+            self.green().powf(GAMMA),
+            self.blue().powf(GAMMA),
+            self.alpha().powf(GAMMA),
+        ]
     }
 }
 

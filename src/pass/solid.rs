@@ -275,7 +275,7 @@ impl bc::Pass for Solid {
                 let locals = Locals {
                     pos_scale: space.pos_scale,
                     rot: space.rot,
-                    color: color.into_vec4(),
+                    color: color.into_vec4_gamma(),
                 };
                 let bl = self.uniform_pool.alloc(&locals, queue);
 

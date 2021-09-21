@@ -42,6 +42,7 @@ pub struct Mesh {
     pub index_stream: Option<IndexStream>,
     vertex_streams: Box<[VertexStream]>,
     pub vertex_count: u32,
+    pub bound_radius: f32,
 }
 
 impl Mesh {
@@ -62,6 +63,7 @@ pub struct MeshBuilder<'a> {
     vertex_streams: Vec<VertexStream>,
     type_infos: Vec<hecs::TypeInfo>,
     vertex_count: usize,
+    bound_radius: f32,
 }
 
 impl<'a> MeshBuilder<'a> {
@@ -70,10 +72,11 @@ impl<'a> MeshBuilder<'a> {
             context,
             name: String::new(),
             data: Vec::new(),
-            vertex_count: 0,
             index_stream: None,
             vertex_streams: Vec::new(),
             type_infos: Vec::new(),
+            vertex_count: 0,
+            bound_radius: 0.0,
         }
     }
 
@@ -119,6 +122,13 @@ impl<'a> MeshBuilder<'a> {
         self
     }
 
+    pub fn radius(self, bound_radius: f32) -> Self {
+        Self {
+            bound_radius,
+            ..self
+        }
+    }
+
     pub fn build(self) -> Prototype {
         let index = self.context.meshes.len();
 
@@ -148,6 +158,7 @@ impl<'a> MeshBuilder<'a> {
             index_stream: self.index_stream,
             vertex_streams: self.vertex_streams.into_boxed_slice(),
             vertex_count: self.vertex_count as u32,
+            bound_radius: self.bound_radius,
         });
 
         Prototype {

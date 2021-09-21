@@ -48,7 +48,11 @@ fn create_prototype(builder: baryon::MeshBuilder) -> baryon::Prototype {
         20, 21, 22, 22, 23, 20, // back
     ];
 
-    builder.vertex(&vertex_data).index(&index_data).build()
+    builder
+        .vertex(&vertex_data)
+        .index(&index_data)
+        .radius(1.0)
+        .build()
 }
 
 struct Cube {

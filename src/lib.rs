@@ -4,7 +4,9 @@ pub use bc::{
 };
 use std::mem;
 
+pub mod geometry;
 pub mod pass;
+#[cfg(feature = "window")]
 pub mod window;
 
 #[repr(C)]

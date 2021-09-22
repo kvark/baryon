@@ -1,73 +1,8 @@
-use std::iter;
-
-fn create_prototype(builder: baryon::MeshBuilder) -> baryon::Prototype {
-    fn vertex(x: i8, y: i8, z: i8) -> baryon::Position {
-        baryon::Position([x as f32, y as f32, z as f32])
-    }
-
-    let positions = [
-        // top (0, 0, 1)
-        vertex(-1, -1, 1),
-        vertex(1, -1, 1),
-        vertex(1, 1, 1),
-        vertex(-1, 1, 1),
-        // bottom (0, 0, -1)
-        vertex(-1, 1, -1),
-        vertex(1, 1, -1),
-        vertex(1, -1, -1),
-        vertex(-1, -1, -1),
-        // right (1, 0, 0)
-        vertex(1, -1, -1),
-        vertex(1, 1, -1),
-        vertex(1, 1, 1),
-        vertex(1, -1, 1),
-        // left (-1, 0, 0)
-        vertex(-1, -1, 1),
-        vertex(-1, 1, 1),
-        vertex(-1, 1, -1),
-        vertex(-1, -1, -1),
-        // front (0, 1, 0)
-        vertex(1, 1, -1),
-        vertex(-1, 1, -1),
-        vertex(-1, 1, 1),
-        vertex(1, 1, 1),
-        // back (0, -1, 0)
-        vertex(1, -1, 1),
-        vertex(-1, -1, 1),
-        vertex(-1, -1, -1),
-        vertex(1, -1, -1),
-    ];
-    let normals = [
-        baryon::Normal([0.0, 0.0, 1.0]),
-        baryon::Normal([0.0, 0.0, -1.0]),
-        baryon::Normal([1.0, 0.0, 0.0]),
-        baryon::Normal([-1.0, 0.0, 0.0]),
-        baryon::Normal([0.0, 1.0, 0.0]),
-        baryon::Normal([0.0, -1.0, 0.0]),
-    ]
-    .iter()
-    .flat_map(|&n| iter::repeat(n).take(4))
-    .collect::<Vec<_>>();
-
-    let index_data = [
-        0u16, 1, 2, 2, 3, 0, // top
-        4, 5, 6, 6, 7, 4, // bottom
-        8, 9, 10, 10, 11, 8, // right
-        12, 13, 14, 14, 15, 12, // left
-        16, 17, 18, 18, 19, 16, // front
-        20, 21, 22, 22, 23, 20, // back
-    ];
-
-    builder
-        .vertex(&positions)
-        .vertex(&normals)
-        .index(&index_data)
-        .radius(1.5)
-        .build()
-}
-
 fn main() {
-    use baryon::window::{Event, Window};
+    use baryon::{
+        geometry::{Geometry, Streams},
+        window::{Event, Window},
+    };
 
     env_logger::init();
     let window = Window::new().title("Phong").build();
@@ -97,7 +32,15 @@ fn main() {
         .color(baryon::Color(0xFF8080FF))
         .build();
 
-    let prototype = create_prototype(context.add_mesh());
+    let prototype = Geometry::cuboid(
+        Streams::NORMAL,
+        mint::Vector3 {
+            x: 1.0,
+            y: 1.0,
+            z: 1.0,
+        },
+    )
+    .bake(&mut context);
     let _cube = scene
         .add_entity(&prototype)
         .component(baryon::Color(0xFF808080))

@@ -1,60 +1,5 @@
 use std::time;
 
-fn create_prototype(builder: baryon::MeshBuilder) -> baryon::Prototype {
-    fn vertex(x: i8, y: i8, z: i8) -> baryon::Position {
-        baryon::Position([x as f32, y as f32, z as f32])
-    }
-
-    //TODO: can squeeze this by a factor of 3
-    let vertex_data = [
-        // top (0, 0, 1)
-        vertex(-1, -1, 1),
-        vertex(1, -1, 1),
-        vertex(1, 1, 1),
-        vertex(-1, 1, 1),
-        // bottom (0, 0, -1)
-        vertex(-1, 1, -1),
-        vertex(1, 1, -1),
-        vertex(1, -1, -1),
-        vertex(-1, -1, -1),
-        // right (1, 0, 0)
-        vertex(1, -1, -1),
-        vertex(1, 1, -1),
-        vertex(1, 1, 1),
-        vertex(1, -1, 1),
-        // left (-1, 0, 0)
-        vertex(-1, -1, 1),
-        vertex(-1, 1, 1),
-        vertex(-1, 1, -1),
-        vertex(-1, -1, -1),
-        // front (0, 1, 0)
-        vertex(1, 1, -1),
-        vertex(-1, 1, -1),
-        vertex(-1, 1, 1),
-        vertex(1, 1, 1),
-        // back (0, -1, 0)
-        vertex(1, -1, 1),
-        vertex(-1, -1, 1),
-        vertex(-1, -1, -1),
-        vertex(1, -1, -1),
-    ];
-
-    let index_data = [
-        0u16, 1, 2, 2, 3, 0, // top
-        4, 5, 6, 6, 7, 4, // bottom
-        8, 9, 10, 10, 11, 8, // right
-        12, 13, 14, 14, 15, 12, // left
-        16, 17, 18, 18, 19, 16, // front
-        20, 21, 22, 22, 23, 20, // back
-    ];
-
-    builder
-        .vertex(&vertex_data)
-        .index(&index_data)
-        .radius(1.0)
-        .build()
-}
-
 struct Cube {
     node: baryon::NodeRef,
     level: u8,
@@ -187,7 +132,10 @@ const LEVELS: &[Level] = &[
 ];
 
 fn main() {
-    use baryon::window::{Event, Window};
+    use baryon::{
+        geometry::{Geometry, Streams},
+        window::{Event, Window},
+    };
 
     env_logger::init();
     let window = Window::new().title("Cubeception").build();
@@ -205,7 +153,15 @@ fn main() {
         background: baryon::Color(0xFF203040),
     };
 
-    let prototype = create_prototype(context.add_mesh());
+    let prototype = Geometry::cuboid(
+        Streams::empty(),
+        mint::Vector3 {
+            x: 1.0,
+            y: 1.0,
+            z: 1.0,
+        },
+    )
+    .bake(&mut context);
     let cubes = fill_scene(&LEVELS[..5], &mut scene, &prototype);
     println!("Initialized {} cubes", cubes.len());
 

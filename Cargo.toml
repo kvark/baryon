@@ -11,6 +11,10 @@ repository = "https://github.com/kvark/baryon"
 members = ["baryon-core"]
 
 [features]
+default = ["window"]
+window = ["raw-window-handle", "winit"]
+# pass = glam, fxhash, mint, wgpu
+# factory =
 
 [dependencies.bc]
 package = "baryon-core"
@@ -21,12 +25,13 @@ version = "0.1"
 # public
 mint = "0.5"
 # private
+bitflags = "1.0"
 bytemuck = { version = "1.4", features = ["derive"] }
 glam = "0.18"
 fxhash = "0.2"
 log = "0.4"
-raw-window-handle = "0.3"
-winit = "0.25"
+raw-window-handle = { version = "0.3", optional = true }
+winit = { version = "0.25", optional = true }
 wgpu = "0.10"
 
 [dev-dependencies]

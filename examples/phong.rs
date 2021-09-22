@@ -32,19 +32,25 @@ fn main() {
         .color(baryon::Color(0xFF8080FF))
         .build();
 
-    let prototype = Geometry::cuboid(
-        Streams::NORMAL,
-        mint::Vector3 {
-            x: 1.0,
-            y: 1.0,
-            z: 1.0,
-        },
-    )
-    .bake(&mut context);
-    let _cube = scene
+    let prototype = Geometry::sphere(Streams::NORMAL, 1.0, 4).bake(&mut context);
+
+    let _m_flat = scene
         .add_entity(&prototype)
+        .position([-2.5, 0.0, 0.0].into())
         .component(baryon::Color(0xFF808080))
         .component(baryon::pass::Shader::Flat)
+        .build();
+    let _m_gouraud = scene
+        .add_entity(&prototype)
+        .position([0.0, 0.0, 0.0].into())
+        .component(baryon::Color(0xFF808080))
+        .component(baryon::pass::Shader::Gouraud)
+        .build();
+    let _m_phong = scene
+        .add_entity(&prototype)
+        .position([2.5, 0.0, 0.0].into())
+        .component(baryon::Color(0xFF808080))
+        .component(baryon::pass::Shader::Phong { glossiness: 10 })
         .build();
 
     let mut pass = baryon::pass::Phong::new(

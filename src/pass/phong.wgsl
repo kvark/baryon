@@ -38,7 +38,7 @@ fn qrot(q: vec4<f32>, v: vec3<f32>) -> vec3<f32> {
     return v + 2.0*cross(q.xyz, cross(q.xyz,v) + q.w*v);
 }
 
-struct Varyings {
+struct PhongVaryings {
     [[builtin(position)]] position: vec4<f32>;
     [[location(0)]] world: vec3<f32>;
     [[location(1)]] normal: vec3<f32>;
@@ -56,11 +56,11 @@ fn compute_half(world: vec3<f32>, normal: vec3<f32>, index: u32) -> vec3<f32> {
 }
 
 [[stage(vertex)]]
-fn main_vs(in: Vertex) -> Varyings {
+fn vs_phong(in: Vertex) -> PhongVaryings {
     let world = locals.pos_scale.w * qrot(locals.rot, in.pos) + locals.pos_scale.xyz;
     let normal = qrot(locals.rot, normalize(in.normal));
 
-    var out: Varyings;
+    var out: PhongVaryings;
     out.position = globals.view_proj * vec4<f32>(world, 1.0);
     out.world = world;
     out.normal = normal;
@@ -87,7 +87,7 @@ fn evaluate(world: vec3<f32>, normal: vec3<f32>, half_vec: vec3<f32>, index: u32
     let kd = light.color_intensity.w * max(0.0, dot_nl);
     ev.diffuse = kd * light.color_intensity.xyz;
 
-    if (light.color_intensity.w > 0.01 && dot_nl > 0.0 && locals.glossiness > 0.0) {
+    if (light.color_intensity.w > 0.01 && dot_nl > 0.0) {
         let ks = dot(normal, normalize(half_vec));
         if (ks > 0.0) {
             ev.specular = pow(ks, locals.glossiness) * light.color_intensity.xyz;
@@ -98,14 +98,57 @@ fn evaluate(world: vec3<f32>, normal: vec3<f32>, half_vec: vec3<f32>, index: u32
 }
 
 [[stage(fragment)]]
-fn main_fs(in: Varyings) -> [[location(0)]] vec4<f32> {
-    let eval0 = evaluate(in.world, in.normal, in.half_vec0, locals.lights[0]);
-    let eval1 = evaluate(in.world, in.normal, in.half_vec1, locals.lights[1]);
-    let eval2 = evaluate(in.world, in.normal, in.half_vec2, locals.lights[2]);
-    let eval3 = evaluate(in.world, in.normal, in.half_vec3, locals.lights[3]);
+fn fs_phong(in: PhongVaryings) -> [[location(0)]] vec4<f32> {
+    let eval0 = evaluate(in.world, in.normal, in.half_vec0, locals.lights.x);
+    let eval1 = evaluate(in.world, in.normal, in.half_vec1, locals.lights.y);
+    let eval2 = evaluate(in.world, in.normal, in.half_vec2, locals.lights.z);
+    let eval3 = evaluate(in.world, in.normal, in.half_vec3, locals.lights.w);
     let total = Evaluation(
         in.color + eval0.diffuse + eval1.diffuse + eval2.diffuse + eval3.diffuse,
         eval0.specular + eval1.specular + eval2.specular + eval3.specular,
     );
     return vec4<f32>(total.diffuse, 0.0) * locals.color + vec4<f32>(total.specular, 0.0);
+}
+
+fn evaluate_flat(world: vec3<f32>, normal: vec3<f32>, index: u32) -> vec3<f32> {
+    let light = lights.data[index];
+
+    let dir = light.pos.xyz - light.pos.w * world;
+    let dot_nl = dot(normal, normalize(dir));
+
+    let kd = light.color_intensity.w * max(0.0, dot_nl);
+    return kd * light.color_intensity.xyz;
+}
+
+struct FlatVaryings {
+    [[builtin(position)]] position: vec4<f32>;
+    [[location(0), interpolate(flat)]] flat_color: vec3<f32>;
+    [[location(1)]] color: vec3<f32>;
+};
+
+[[stage(vertex)]]
+fn vs_flat(in: Vertex) -> FlatVaryings {
+    let world = locals.pos_scale.w * qrot(locals.rot, in.pos) + locals.pos_scale.xyz;
+    let normal = qrot(locals.rot, normalize(in.normal));
+    let diffuse = globals.ambient.xyz +
+        evaluate_flat(world, normal, locals.lights.x) +
+        evaluate_flat(world, normal, locals.lights.y) +
+        evaluate_flat(world, normal, locals.lights.z) +
+        evaluate_flat(world, normal, locals.lights.w);
+
+    var out: FlatVaryings;
+    out.position = globals.view_proj * vec4<f32>(world, 1.0);
+    out.flat_color = diffuse * locals.color.xyz;
+    out.color = diffuse * locals.color.xyz;
+    return out;
+}
+
+[[stage(fragment)]]
+fn fs_flat(in: FlatVaryings) -> [[location(0)]] vec4<f32> {
+    return vec4<f32>(in.flat_color, 0.0);
+}
+
+[[stage(fragment)]]
+fn fs_gouraud(in: FlatVaryings) -> [[location(0)]] vec4<f32> {
+    return vec4<f32>(in.color, 0.0);
 }

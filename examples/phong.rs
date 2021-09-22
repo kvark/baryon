@@ -38,13 +38,13 @@ fn main() {
         .add_entity(&prototype)
         .position([-2.5, 0.0, 0.0].into())
         .component(baryon::Color(0xFF808080))
-        .component(baryon::pass::Shader::Flat)
+        .component(baryon::pass::Shader::Gouraud { flat: true })
         .build();
     let _m_gouraud = scene
         .add_entity(&prototype)
         .position([0.0, 0.0, 0.0].into())
         .component(baryon::Color(0xFF808080))
-        .component(baryon::pass::Shader::Gouraud)
+        .component(baryon::pass::Shader::Gouraud { flat: false })
         .build();
     let _m_phong = scene
         .add_entity(&prototype)

@@ -4,9 +4,15 @@ use std::mem;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Shader {
+    Gouraud { flat: bool },
+    Phong { glossiness: u8 },
+}
+
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+enum ShaderKind {
     Flat,
     Gouraud,
-    Phong { glossiness: u8 },
+    Phong,
 }
 
 const DEPTH_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Depth24Plus;
@@ -42,7 +48,7 @@ struct Locals {
 #[derive(Eq, Hash, PartialEq)]
 struct PipelineKey {
     target_format: wgpu::TextureFormat,
-    flat: bool,
+    kind: ShaderKind,
     textured: bool,
 }
 
@@ -246,19 +252,24 @@ impl bc::Pass for Phong {
         }
 
         let info = &self.pipeline_info;
-        for &flat in &[false, true] {
+        for &kind in &[ShaderKind::Flat, ShaderKind::Gouraud, ShaderKind::Phong] {
             for &textured in &[false, true] {
                 let key = PipelineKey {
                     target_format: target.format,
-                    flat,
+                    kind,
                     textured,
                 };
                 let _ = self.pipelines.entry(key).or_insert_with(|| {
                     let label = format!(
-                        "phong{}{}",
-                        if flat { "-flat" } else { "" },
+                        "phong-{:?}{}",
+                        kind,
                         if textured { "-textured" } else { "" },
                     );
+                    let (vs, fs) = match kind {
+                        ShaderKind::Flat => ("vs_flat", "fs_flat"),
+                        ShaderKind::Gouraud => ("vs_flat", "fs_gouraud"),
+                        ShaderKind::Phong => ("vs_phong", "fs_phong"),
+                    };
                     device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
                         label: Some(&label),
                         layout: Some(&info.layout),
@@ -268,7 +279,7 @@ impl bc::Pass for Phong {
                                 crate::Normal::layout::<1>(),
                             ],
                             module: &info.shader_module,
-                            entry_point: "main_vs",
+                            entry_point: vs,
                         },
                         primitive: info.primitive_state,
                         depth_stencil: Some(wgpu::DepthStencilState {
@@ -282,7 +293,7 @@ impl bc::Pass for Phong {
                         fragment: Some(wgpu::FragmentState {
                             targets: &[target.format.into()],
                             module: &info.shader_module,
-                            entry_point: "main_fs",
+                            entry_point: fs,
                         }),
                     })
                 });
@@ -430,7 +441,11 @@ impl bc::Pass for Phong {
                 //TODO: check for texture coordinates
                 let key = PipelineKey {
                     target_format: target.format,
-                    flat: shader == Shader::Flat,
+                    kind: match shader {
+                        Shader::Gouraud { flat: true } => ShaderKind::Flat,
+                        Shader::Gouraud { flat: false } => ShaderKind::Gouraud,
+                        Shader::Phong { .. } => ShaderKind::Phong,
+                    },
                     textured: false,
                 };
                 pass.set_pipeline(&self.pipelines[&key]);

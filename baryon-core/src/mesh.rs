@@ -51,6 +51,11 @@ impl Mesh {
             .iter()
             .find(|vs| vs.type_id == TypeId::of::<T>())
     }
+
+    pub fn vertex_slice<T: 'static>(&self) -> wgpu::BufferSlice {
+        let stream = self.vertex_stream::<T>().unwrap();
+        self.buffer.slice(stream.offset..)
+    }
 }
 
 pub struct Vertex<T>(PhantomData<T>);

@@ -36,6 +36,7 @@ struct Locals {
     color: [f32; 4],
     lights: [u32; LIGHT_COUNT],
     glossiness: f32,
+    _pad: [f32; 3],
 }
 
 #[derive(Eq, Hash, PartialEq)]
@@ -114,16 +115,30 @@ impl Phong {
         let globals_size = mem::size_of::<Globals>() as wgpu::BufferAddress;
         let global_bgl = d.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("phong globals"),
-            entries: &[wgpu::BindGroupLayoutEntry {
-                binding: 0,
-                visibility: wgpu::ShaderStages::VERTEX,
-                ty: wgpu::BindingType::Buffer {
-                    ty: wgpu::BufferBindingType::Uniform,
-                    has_dynamic_offset: false,
-                    min_binding_size: wgpu::BufferSize::new(globals_size),
+            entries: &[
+                wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::VERTEX,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: wgpu::BufferSize::new(globals_size),
+                    },
+                    count: None,
                 },
-                count: None,
-            }],
+                wgpu::BindGroupLayoutEntry {
+                    binding: 1,
+                    visibility: wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Storage { read_only: true },
+                        has_dynamic_offset: false,
+                        min_binding_size: wgpu::BufferSize::new(
+                            mem::size_of::<Locals>() as wgpu::BufferAddress
+                        ),
+                    },
+                    count: None,
+                },
+            ],
         });
         let global_uniform_buf = d.create_buffer(&wgpu::BufferDescriptor {
             label: Some("phong globals"),
@@ -429,6 +444,7 @@ impl bc::Pass for Phong {
                         Shader::Phong { glossiness } => glossiness as f32,
                         _ => 0.0,
                     },
+                    _pad: [0.0; 3],
                 };
                 let bl = self.uniform_pool.alloc(&locals, queue);
 
@@ -438,8 +454,8 @@ impl bc::Pass for Phong {
                 let local_bg = &self.local_bind_groups[&key];
                 pass.set_bind_group(1, local_bg, &[bl.offset]);
 
-                let pos_vs = mesh.vertex_stream::<crate::Position>().unwrap();
-                pass.set_vertex_buffer(0, mesh.buffer.slice(pos_vs.offset..));
+                pass.set_vertex_buffer(0, mesh.vertex_slice::<crate::Position>());
+                pass.set_vertex_buffer(1, mesh.vertex_slice::<crate::Normal>());
 
                 if let Some(ref is) = mesh.index_stream {
                     pass.set_index_buffer(mesh.buffer.slice(is.offset..), is.format);

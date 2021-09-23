@@ -137,7 +137,6 @@ fn main() {
         window::{Event, Window},
     };
 
-    env_logger::init();
     let window = Window::new().title("Cubeception").build();
     let mut context = pollster::block_on(baryon::Context::init().build(&window));
     let mut scene = baryon::Scene::new();

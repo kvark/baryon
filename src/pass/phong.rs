@@ -139,7 +139,7 @@ impl Phong {
                         ty: wgpu::BufferBindingType::Storage { read_only: true },
                         has_dynamic_offset: false,
                         min_binding_size: wgpu::BufferSize::new(
-                            mem::size_of::<Locals>() as wgpu::BufferAddress
+                            mem::size_of::<Light>() as wgpu::BufferAddress
                         ),
                     },
                     count: None,

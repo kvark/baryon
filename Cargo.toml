@@ -11,10 +11,14 @@ repository = "https://github.com/kvark/baryon"
 members = ["baryon-core"]
 
 [features]
-default = ["window"]
+default = ["window", "obj"] #TEMP
 window = ["raw-window-handle", "winit"]
 # pass = glam, fxhash, mint, wgpu
 # factory =
+
+[[example]]
+name = "load-obj"
+required-features = ["obj"]
 
 [dependencies.bc]
 package = "baryon-core"
@@ -30,11 +34,11 @@ bytemuck = { version = "1.4", features = ["derive"] }
 glam = "0.18"
 fxhash = "0.2"
 log = "0.4"
+obj = { version = "0.10", optional = true }
 raw-window-handle = { version = "0.3", optional = true }
 winit = { version = "0.25", optional = true }
 wgpu = "0.10"
 
 [dev-dependencies]
-env_logger = "0.8"
 naga = { version = "0.6", features = ["wgsl-in"] }
 pollster = "0.2"

@@ -4,6 +4,7 @@ pub use bc::{
 };
 use std::mem;
 
+pub mod asset;
 pub mod geometry;
 pub mod pass;
 #[cfg(feature = "window")]

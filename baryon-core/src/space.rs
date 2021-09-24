@@ -48,23 +48,23 @@ impl Space {
 
 impl<T> super::ObjectBuilder<'_, T> {
     //TODO: should we accept `V: Into<mint::...>` here?
-    pub fn position(mut self, position: mint::Vector3<f32>) -> Self {
+    pub fn position(&mut self, position: mint::Vector3<f32>) -> &mut Self {
         self.node.local.position = position.into();
         self
     }
 
-    pub fn scale(mut self, scale: f32) -> Self {
+    pub fn scale(&mut self, scale: f32) -> &mut Self {
         self.node.local.scale = scale;
         self
     }
 
-    pub fn orientation_around(mut self, axis: mint::Vector3<f32>, angle_deg: f32) -> Self {
+    pub fn orientation_around(&mut self, axis: mint::Vector3<f32>, angle_deg: f32) -> &mut Self {
         self.node.local.orientation =
             glam::Quat::from_axis_angle(axis.into(), angle_deg * DEGREES_TO_RADIANS);
         self
     }
 
-    pub fn look_at(mut self, target: mint::Vector3<f32>, up: mint::Vector3<f32>) -> Self {
+    pub fn look_at(&mut self, target: mint::Vector3<f32>, up: mint::Vector3<f32>) -> &mut Self {
         /* // This path just doesn't work well
         let dir = (glam::Vec3::from(target) - self.node.local.position).normalize();
         self.node.local.orientation = glam::Quat::from_rotation_arc(-glam::Vec3::Z, dir);

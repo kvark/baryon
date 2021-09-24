@@ -85,11 +85,9 @@ impl<'a> MeshBuilder<'a> {
         }
     }
 
-    pub fn name(self, name: &str) -> Self {
-        Self {
-            name: name.to_string(),
-            ..self
-        }
+    pub fn name<'s>(&'a mut self, name: &str) -> &'s mut Self {
+        self.name = name.to_string();
+        self
     }
 
     fn append<T: bytemuck::Pod>(&mut self, data: &[T]) -> wgpu::BufferAddress {
@@ -98,20 +96,18 @@ impl<'a> MeshBuilder<'a> {
         offset as _
     }
 
-    pub fn index(mut self, data: &[u16]) -> Self {
+    pub fn index<'s>(&'s mut self, data: &[u16]) -> &'s mut Self {
         assert!(self.index_stream.is_none());
         let offset = self.append(data);
-        Self {
-            index_stream: Some(IndexStream {
-                offset,
-                format: wgpu::IndexFormat::Uint16,
-                count: data.len() as u32,
-            }),
-            ..self
-        }
+        self.index_stream = Some(IndexStream {
+            offset,
+            format: wgpu::IndexFormat::Uint16,
+            count: data.len() as u32,
+        });
+        self
     }
 
-    pub fn vertex<T: bytemuck::Pod>(mut self, data: &[T]) -> Self {
+    pub fn vertex<'s, T: bytemuck::Pod>(&'s mut self, data: &[T]) -> &'s mut Self {
         let offset = self.append(data);
         if self.vertex_count == 0 {
             self.vertex_count = data.len();
@@ -127,14 +123,12 @@ impl<'a> MeshBuilder<'a> {
         self
     }
 
-    pub fn radius(self, bound_radius: f32) -> Self {
-        Self {
-            bound_radius,
-            ..self
-        }
+    pub fn radius(&mut self, radius: f32) -> &mut Self {
+        self.bound_radius = radius;
+        self
     }
 
-    pub fn build(self) -> Prototype {
+    pub fn build(&mut self) -> Prototype {
         let index = self.context.meshes.len();
 
         let mut usage = wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::VERTEX;
@@ -160,8 +154,8 @@ impl<'a> MeshBuilder<'a> {
             .into_boxed_slice();
         self.context.meshes.push(Mesh {
             buffer,
-            index_stream: self.index_stream,
-            vertex_streams: self.vertex_streams.into_boxed_slice(),
+            index_stream: self.index_stream.take(),
+            vertex_streams: mem::take(&mut self.vertex_streams).into_boxed_slice(),
             vertex_count: self.vertex_count as u32,
             bound_radius: self.bound_radius,
         });
@@ -169,7 +163,7 @@ impl<'a> MeshBuilder<'a> {
         Prototype {
             reference: super::MeshRef(index as u32),
             type_ids,
-            type_infos: self.type_infos.into_boxed_slice(),
+            type_infos: mem::take(&mut self.type_infos).into_boxed_slice(),
         }
     }
 }

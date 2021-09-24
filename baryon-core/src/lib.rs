@@ -27,7 +27,7 @@ mod mesh;
 mod space;
 
 use raw_window_handle::HasRawWindowHandle;
-use std::ops;
+use std::{mem, ops};
 
 pub use color::Color;
 pub use mesh::{IndexStream, Mesh, MeshBuilder, Prototype, Vertex, VertexStream};
@@ -307,9 +307,9 @@ impl Scene {
         }
     }
 
-    fn add_node_impl(&mut self, node: Node) -> NodeRef {
+    fn add_node_impl(&mut self, node: &mut Node) -> NodeRef {
         let index = self.nodes.len();
-        self.nodes.push(node);
+        self.nodes.push(mem::take(node));
         NodeRef(index as u32)
     }
 
@@ -390,15 +390,15 @@ pub struct ObjectBuilder<'a, T> {
 }
 
 impl<T> ObjectBuilder<'_, T> {
-    pub fn parent(mut self, parent: NodeRef) -> Self {
+    pub fn parent(&mut self, parent: NodeRef) -> &mut Self {
         self.node.parent = parent;
         self
     }
 }
 
 impl ObjectBuilder<'_, ()> {
-    pub fn build(self) -> NodeRef {
-        self.scene.add_node_impl(self.node)
+    pub fn build(&mut self) -> NodeRef {
+        self.scene.add_node_impl(&mut self.node)
     }
 }
 
@@ -407,17 +407,17 @@ impl ObjectBuilder<'_, EntityBuilder> {
     ///
     /// The following components are recognized by the library:
     ///   - [`Color`]
-    pub fn component<T: hecs::Component>(mut self, component: T) -> Self {
+    pub fn component<T: hecs::Component>(&mut self, component: T) -> &mut Self {
         self.kind.raw.add(component);
         self
     }
 
-    pub fn build(mut self) -> EntityRef {
+    pub fn build(&mut self) -> EntityRef {
         let entity = Entity {
             node: if self.node.local == space::Space::default() {
                 self.node.parent
             } else {
-                self.scene.add_node_impl(self.node)
+                self.scene.add_node_impl(&mut self.node)
             },
             mesh: self.kind.mesh,
         };
@@ -427,22 +427,22 @@ impl ObjectBuilder<'_, EntityBuilder> {
 }
 
 impl ObjectBuilder<'_, LightBuilder> {
-    pub fn intensity(mut self, intensity: f32) -> Self {
+    pub fn intensity(&mut self, intensity: f32) -> &mut Self {
         self.kind.intensity = intensity;
         self
     }
 
-    pub fn color(mut self, color: Color) -> Self {
+    pub fn color(&mut self, color: Color) -> &mut Self {
         self.kind.color = color;
         self
     }
 
-    pub fn build(self) -> LightRef {
+    pub fn build(&mut self) -> LightRef {
         let light = Light {
             node: if self.node.local == space::Space::default() {
                 self.node.parent
             } else {
-                self.scene.add_node_impl(self.node)
+                self.scene.add_node_impl(&mut self.node)
             },
             color: self.kind.color,
             intensity: self.kind.intensity,
@@ -457,7 +457,7 @@ impl ObjectBuilder<'_, LightBuilder> {
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct MeshRef(u32);
 
-#[derive(Debug)]
+#[derive(Clone, Copy, Debug)]
 pub enum LightKind {
     Directional,
     Point,

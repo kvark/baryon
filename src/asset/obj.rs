@@ -40,12 +40,14 @@ pub fn load_obj(
                 }
             }
 
-            let mut mesh_builder = context.add_mesh().vertex(&positions);
+            let mut mesh_builder = context.add_mesh();
+            mesh_builder.vertex(&positions);
             if !normals.is_empty() {
-                mesh_builder = mesh_builder.vertex(&normals);
+                mesh_builder.vertex(&normals);
             }
             let prototype = mesh_builder.build();
-            let mut entity_builder = scene.add_entity(&prototype).parent(node);
+            let mut entity_builder = scene.add_entity(&prototype);
+            entity_builder.parent(node);
 
             log::info!(
                 "\tmaterial {} with {} positions and {} normals",
@@ -58,10 +60,10 @@ pub fn load_obj(
                     let color = cf.iter().fold(0xFF, |u, c| {
                         (u << 8) + (c * 255.0).max(0.0).min(255.0) as u32
                     });
-                    entity_builder = entity_builder.component(crate::Color(color));
+                    entity_builder.component(crate::Color(color));
                 }
                 if !normals.is_empty() {
-                    entity_builder = if let Some(glossiness) = mat.ns {
+                    if let Some(glossiness) = mat.ns {
                         entity_builder.component(crate::pass::Shader::Phong {
                             glossiness: glossiness as u8,
                         })

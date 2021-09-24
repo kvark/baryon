@@ -17,15 +17,14 @@ pub struct Geometry {
 
 impl Geometry {
     pub fn bake(&self, context: &mut bc::Context) -> bc::Prototype {
-        let mut mb = context
-            .add_mesh()
-            .radius(self.radius)
-            .vertex(&self.positions);
+        let mut mb = context.add_mesh();
+        mb.radius(self.radius);
+        mb.vertex(&self.positions);
         if let Some(ref stream) = self.normals {
-            mb = mb.vertex(stream);
+            mb.vertex(stream);
         }
         if let Some(ref indices) = self.indices {
-            mb = mb.index(indices);
+            mb.index(indices);
         }
         mb.build()
     }

@@ -1,6 +1,6 @@
 use std::{iter, path::Path};
 
-/// Load mesh from Wavefront Obj format.
+/// Load entities from Wavefront Obj format.
 pub fn load_obj(
     path: impl AsRef<Path>,
     scene: &mut crate::Scene,

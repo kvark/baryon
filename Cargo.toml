@@ -11,14 +11,19 @@ repository = "https://github.com/kvark/baryon"
 members = ["baryon-core"]
 
 [features]
-default = ["window", "obj"] #TEMP
+default = ["window"]
 window = ["raw-window-handle", "winit"]
+# obj, gltf
 # pass = glam, fxhash, mint, wgpu
 # factory =
 
 [[example]]
 name = "load-obj"
 required-features = ["obj"]
+
+[[example]]
+name = "load-gltf"
+required-features = ["gltf"]
 
 [dependencies.bc]
 package = "baryon-core"
@@ -32,6 +37,7 @@ mint = "0.5"
 bitflags = "1.0"
 bytemuck = { version = "1.4", features = ["derive"] }
 glam = "0.18"
+gltf = { version = "0.16", features = ["utils"], optional = true }
 fxhash = "0.2"
 log = "0.4"
 obj = { version = "0.10", optional = true }

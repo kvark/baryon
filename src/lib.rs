@@ -10,11 +10,11 @@ pub mod pass;
 #[cfg(feature = "window")]
 pub mod window;
 
-#[repr(C)]
+#[repr(transparent)]
 #[derive(Clone, Copy, Debug, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct Position(pub [f32; 3]);
 
-#[repr(C)]
+#[repr(transparent)]
 #[derive(Clone, Copy, Debug, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct Normal(pub [f32; 3]);
 

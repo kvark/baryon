@@ -64,6 +64,11 @@ impl<T> super::ObjectBuilder<'_, T> {
         self
     }
 
+    pub fn orientation(&mut self, quat: mint::Quaternion<f32>) -> &mut Self {
+        self.node.local.orientation = quat.into();
+        self
+    }
+
     pub fn look_at(&mut self, target: mint::Vector3<f32>, up: mint::Vector3<f32>) -> &mut Self {
         /* // This path just doesn't work well
         let dir = (glam::Vec3::from(target) - self.node.local.position).normalize();
@@ -116,6 +121,7 @@ impl super::Node {
     }
 }
 
+#[derive(Debug)]
 pub struct RawSpace {
     pub pos_scale: [f32; 4],
     pub rot: [f32; 4],

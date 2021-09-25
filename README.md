@@ -11,7 +11,8 @@ Dependency highlights:
   - [winit](https://github.com/rust-windowing/winit) for windowing
   - [hecs](https://github.com/Ralith/hecs) for material ECS
 
-For more features, consider [Bevy](https://github.com/bevyengine/bevy).
-For better performance, consider [Rend3](https://github.com/BVE-Reborn/rend3/).
+For a similar but more complete experience, with bigger focus on ECS, consider [Dotrix](https://github.com/lowenware/dotrix).
+For more features and bigger community, consider [Bevy](https://github.com/bevyengine/bevy).
+For better performance and experimental high-tech, consider [Rend3](https://github.com/BVE-Reborn/rend3/).
 
 ![cube-ception](etc/cubeception.png)

@@ -9,8 +9,9 @@ struct MeshScratch {
 
 struct Primitive {
     prototype: crate::Prototype,
-    shader: crate::pass::Shader,
     color: crate::Color,
+    shader: crate::pass::Shader,
+    material: crate::pass::Material,
 }
 
 fn load_primitive<'a>(
@@ -40,15 +41,22 @@ fn load_primitive<'a>(
         mesh_builder.vertex(&scratch.normals);
     }
 
-    let material = primitive.material();
-    let pbr = material.pbr_metallic_roughness();
+    let mat = primitive.material();
+    let pbr = mat.pbr_metallic_roughness();
     let base_color = pbr.base_color_factor();
-    let color = crate::Color::new(base_color[0], base_color[1], base_color[2], base_color[3]);
+    let material = crate::pass::Material {
+        emissive_color: crate::Color::from_rgb_alpha(mat.emissive_factor(), 0.0),
+        metallic_factor: pbr.metallic_factor(),
+        roughness_factor: pbr.roughness_factor(),
+        normal_scale: 1.0,
+        occlusion_strength: 1.0,
+    };
 
     Primitive {
         prototype: mesh_builder.build(),
+        color: crate::Color::from_rgba(base_color),
         shader: crate::pass::Shader::Gouraud { flat: true }, //TODO
-        color,
+        material,
     }
 }
 
@@ -118,6 +126,7 @@ pub fn load_gltf(
                     .parent(node)
                     .component(primitive.color)
                     .component(primitive.shader)
+                    .component(primitive.material)
                     .build();
             }
         }

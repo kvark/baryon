@@ -24,6 +24,13 @@ impl Color {
         )
     }
 
+    pub fn from_rgba(d: [f32; 4]) -> Self {
+        Self::new(d[0], d[1], d[2], d[3])
+    }
+    pub fn from_rgb_alpha(d: [f32; 3], alpha: f32) -> Self {
+        Self::new(d[0], d[1], d[2], alpha)
+    }
+
     fn export(self, index: u32) -> f32 {
         ((self.0 >> (index << 3)) & 0xFF) as f32 / 255.0
     }

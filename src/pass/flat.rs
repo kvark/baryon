@@ -1,9 +1,16 @@
 use bc::ContextDetail as _;
+use std::ops;
+
+pub struct Sprite {
+    pub image: crate::ImageRef,
+    pub texels: ops::Range<mint::Point2<i16>>,
+    pub alpha: Option<f32>,
+}
 
 #[derive(Default)]
-pub struct Clear;
+pub struct Flat;
 
-impl bc::Pass for Clear {
+impl bc::Pass for Flat {
     fn draw(
         &mut self,
         targets: &[crate::TargetRef],
@@ -18,7 +25,7 @@ impl bc::Pass for Clear {
 
         {
             let _pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: Some("clear"),
+                label: Some("flat"),
                 color_attachments: &[wgpu::RenderPassColorAttachment {
                     view: &target.view,
                     resolve_target: None,

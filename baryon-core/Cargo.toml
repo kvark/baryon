@@ -18,5 +18,7 @@ mint = "0.5"
 raw-window-handle = "0.3"
 wgpu = "0.10"
 # private
+ddsfile = "0.4"
 glam = { version = "0.18", features = ["mint"] }
+image = { version = "0.23", default-features = false, features = ["jpeg", "png", "bmp", "hdr", "dds"] }
 log = "0.4"

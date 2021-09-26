@@ -23,6 +23,7 @@
 )]
 
 mod color;
+mod load;
 mod mesh;
 mod space;
 
@@ -57,6 +58,13 @@ impl Target {
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct TargetRef(u8);
 
+pub struct Image {
+    pub view: wgpu::TextureView,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct ImageRef(u32);
+
 pub struct Context {
     #[allow(unused)]
     instance: wgpu::Instance,
@@ -64,6 +72,7 @@ pub struct Context {
     device: wgpu::Device,
     queue: wgpu::Queue,
     targets: Vec<Target>,
+    images: Vec<Image>,
     meshes: Vec<Mesh>,
 }
 
@@ -105,6 +114,7 @@ impl ContextBuilder {
             device,
             queue,
             targets: Vec::new(),
+            images: Vec::new(),
             meshes: Vec::new(),
         }
     }
@@ -148,6 +158,7 @@ impl ContextBuilder {
             device,
             queue,
             targets: Vec::new(),
+            images: Vec::new(),
             meshes: Vec::new(),
         }
     }

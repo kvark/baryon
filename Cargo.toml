@@ -6,6 +6,12 @@ resolver = "2"
 license = "MIT"
 description = "Fast prototyping 3D engine"
 repository = "https://github.com/kvark/baryon"
+keywords = ["3d", "graphics", "wgpu"]
+categories = ["game-development", "graphics", "rendering::engine"]
+exclude = [
+    "examples/*",
+    "tests/*",
+]
 
 [workspace]
 members = ["baryon-core"]
@@ -46,5 +52,6 @@ winit = { version = "0.25", optional = true }
 wgpu = "0.10"
 
 [dev-dependencies]
+bc = { package = "baryon-core", path = "baryon-core" } # for custom Pass implementation
 naga = { version = "0.6", features = ["wgsl-in"] }
 pollster = "0.2"

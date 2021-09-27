@@ -2,51 +2,62 @@ use std::time;
 
 //TODO: a mechanism like this should be a part of the engine
 struct Animator {
-    cell_size: mint::Vector2<i16>,
-    cell_counts: mint::Vector2<i16>,
+    map: baryon::asset::SpriteMap,
+    cell_counts: mint::Vector2<usize>,
     duration: time::Duration,
-    repeat: bool,
     sprite: baryon::EntityRef,
-    current: mint::Point2<i16>,
+    current: mint::Point2<usize>,
     moment: time::Instant,
+}
+
+#[repr(usize)]
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum State {
+    Idle = 0,
+    MoveRight = 9,
+    MoveLeft = 8,
+    Kick = 4,
+    Jump = 10,
+    Lie = 12,
+}
+impl Default for State {
+    fn default() -> Self {
+        Self::Idle
+    }
 }
 
 impl Animator {
     fn update_uv(&mut self, scene: &mut baryon::Scene) {
-        let begin = mint::Point2 {
-            x: self.current.x * self.cell_size.x,
-            y: self.current.y * self.cell_size.y,
-        };
-        let end = mint::Point2 {
-            x: begin.x + self.cell_size.x,
-            y: begin.y + self.cell_size.y,
-        };
+        let uv_range = self.map.at(self.current);
         scene
             .world
             .get_mut::<baryon::Sprite>(self.sprite)
             .unwrap()
-            .uv = Some(begin..end);
+            .uv = Some(uv_range);
     }
 
-    fn switch(&mut self, change_row: i16, scene: &mut baryon::Scene) {
+    fn switch(&mut self, state: State, scene: &mut baryon::Scene) {
         self.moment = time::Instant::now();
         self.current.x = 0;
-        self.current.y = (self.current.y + change_row).rem_euclid(self.cell_counts.y);
+        self.current.y = state as usize;
         self.update_uv(scene);
     }
 
     fn tick(&mut self, scene: &mut baryon::Scene) {
-        if self.moment.elapsed() >= self.duration
-            && (self.repeat || self.current.x < self.cell_counts.x)
-        {
-            self.moment = time::Instant::now();
-            self.current.x += 1;
-            if self.current.x < self.cell_counts.x {
-                self.update_uv(scene);
-            } else if self.repeat {
-                self.current.x = 0;
-                self.update_uv(scene);
-            }
+        if self.moment.elapsed() < self.duration {
+            return;
+        }
+
+        self.current.x += 1;
+        self.moment = time::Instant::now();
+        if self.current.x == self.cell_counts.x {
+            self.current.x = 0;
+            self.current.y = State::Idle as usize;
+            // don't update the scene here, so that
+            // input can have a chance to transition
+            // to something other than `Idle`.
+        } else {
+            self.update_uv(scene);
         }
     }
 }
@@ -74,31 +85,36 @@ fn main() {
     let sprite = scene.add_sprite(image).build();
 
     let mut anim = Animator {
-        cell_size: mint::Vector2 { x: 96, y: 96 },
+        map: baryon::asset::SpriteMap {
+            origin: mint::Point2 { x: 0, y: 0 },
+            cell_size: mint::Vector2 { x: 96, y: 96 },
+        },
         cell_counts: mint::Vector2 { x: 5, y: 13 },
         duration: time::Duration::from_secs_f64(0.1),
-        repeat: true,
         current: mint::Point2 { x: 0, y: 0 },
         moment: time::Instant::now(),
         sprite,
     };
-    anim.update_uv(&mut scene);
+    anim.switch(State::Idle, &mut scene);
 
     window.run(move |event| match event {
         Event::Resize { width, height } => {
             context.resize(width, height);
         }
-        Event::Keyboard {
-            key: Key::Up,
-            pressed: true,
-        } => {
-            anim.switch(1, &mut scene);
-        }
-        Event::Keyboard {
-            key: Key::Down,
-            pressed: true,
-        } => {
-            anim.switch(-1, &mut scene);
+        Event::Keyboard { key, pressed: true } => {
+            let new_state = match key {
+                Key::Up => Some(State::Jump),
+                Key::Down => Some(State::Lie),
+                Key::Space => Some(State::Kick),
+                Key::Left => Some(State::MoveLeft),
+                Key::Right => Some(State::MoveRight),
+                _ => None,
+            };
+            if let Some(state) = new_state {
+                if anim.current.y != state as usize || state == State::Kick {
+                    anim.switch(state, &mut scene);
+                }
+            }
         }
         Event::Draw => {
             anim.tick(&mut scene);

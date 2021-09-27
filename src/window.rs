@@ -34,6 +34,11 @@ pub enum Key {
     Digit(u8),
     Letter(char),
     Function(u8),
+    Up,
+    Down,
+    Left,
+    Right,
+    Space,
     Escape,
     Other,
 }
@@ -97,11 +102,19 @@ impl Window {
                             Key::Letter((code as u8 - Vkc::A as u8) as char)
                         } else if code >= Vkc::F1 && code <= Vkc::F12 {
                             Key::Function(code as u8 - Vkc::F1 as u8)
-                        } else if code == Vkc::Escape {
-                            Key::Escape
                         } else {
-                            log::debug!("Urecognized key {:?}", code);
-                            Key::Other
+                            match code {
+                                Vkc::Left => Key::Left,
+                                Vkc::Right => Key::Right,
+                                Vkc::Up => Key::Up,
+                                Vkc::Down => Key::Down,
+                                Vkc::Space => Key::Space,
+                                Vkc::Escape => Key::Escape,
+                                _ => {
+                                    log::debug!("Urecognized key {:?}", code);
+                                    Key::Other
+                                }
+                            }
                         },
                         pressed: state == ElementState::Pressed,
                     });

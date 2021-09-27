@@ -52,6 +52,5 @@ winit = { version = "0.25", optional = true }
 wgpu = "0.10"
 
 [dev-dependencies]
-bc = { package = "baryon-core", path = "baryon-core" } # for custom Pass implementation
 naga = { version = "0.6", features = ["wgsl-in"] }
 pollster = "0.2"

@@ -1,6 +1,7 @@
 pub use bc::{
-    Camera, Color, Context, EntityRef, ImageRef, Light, LightRef, MeshBuilder, MeshRef, NodeRef,
-    Pass, Projection, Prototype, Scene, TargetRef,
+    Camera, Color, Context, EntityRef, ImageRef, Light, LightBuilder, LightRef, MeshBuilder,
+    MeshRef, NodeRef, Pass, Projection, Prototype, Scene, Sprite, SpriteBuilder, TargetFormat,
+    TargetRef,
 };
 use std::mem;
 

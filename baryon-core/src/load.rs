@@ -12,7 +12,7 @@ impl super::Context {
             .unwrap_or_else(|e| panic!("Unable to open {}: {:?}", path.display(), e));
         let mut buf_reader = io::BufReader::new(file);
 
-        let texture = if image_format == image::ImageFormat::Dds {
+        let (texture, size) = if image_format == image::ImageFormat::Dds {
             let dds = ddsfile::Dds::read(&mut buf_reader)
                 .unwrap_or_else(|e| panic!("Unable to read {}: {:?}", path.display(), e));
 
@@ -50,23 +50,24 @@ impl super::Context {
                 wgpu::TextureFormat::Rgba8UnormSrgb
             };
 
-            self.device.create_texture_with_data(
-                &self.queue,
-                &wgpu::TextureDescriptor {
-                    label: Some(&label),
-                    size: wgpu::Extent3d {
-                        width: dds.header.width,
-                        height: dds.header.height,
-                        depth_or_array_layers,
-                    },
-                    mip_level_count,
-                    sample_count: 1,
-                    dimension,
-                    format,
-                    usage: wgpu::TextureUsages::TEXTURE_BINDING,
+            let desc = wgpu::TextureDescriptor {
+                label: Some(&label),
+                size: wgpu::Extent3d {
+                    width: dds.header.width,
+                    height: dds.header.height,
+                    depth_or_array_layers,
                 },
-                &dds.data,
-            )
+                mip_level_count,
+                sample_count: 1,
+                dimension,
+                format,
+                usage: wgpu::TextureUsages::TEXTURE_BINDING,
+            };
+            let texture = self
+                .device
+                .create_texture_with_data(&self.queue, &desc, &dds.data);
+
+            (texture, desc.size)
         } else {
             let img = image::load(buf_reader, image_format)
                 .unwrap_or_else(|e| panic!("Unable to decode {}: {:?}", path.display(), e))
@@ -78,7 +79,7 @@ impl super::Context {
                 height,
                 depth_or_array_layers: 1,
             };
-            let texture = self.device.create_texture(&wgpu::TextureDescriptor {
+            let desc = wgpu::TextureDescriptor {
                 label: Some(&label),
                 size,
                 mip_level_count: 1, //TODO: generate `size.max_mips()` mipmaps
@@ -86,7 +87,8 @@ impl super::Context {
                 dimension: wgpu::TextureDimension::D2,
                 format: wgpu::TextureFormat::Rgba8UnormSrgb,
                 usage: wgpu::TextureUsages::COPY_DST | wgpu::TextureUsages::TEXTURE_BINDING,
-            });
+            };
+            let texture = self.device.create_texture(&desc);
 
             self.queue.write_texture(
                 texture.as_image_copy(),
@@ -98,12 +100,12 @@ impl super::Context {
                 },
                 size,
             );
-            texture
+            (texture, size)
         };
 
         let index = self.images.len();
         let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
-        self.images.push(super::Image { view });
+        self.images.push(super::Image { view, size });
         super::ImageRef(index as u32)
     }
 }

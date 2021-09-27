@@ -1,6 +1,8 @@
 use std::{any::TypeId, marker::PhantomData, mem};
 use wgpu::util::DeviceExt as _;
 
+/// A freshly created Mesh that comes with metadata,
+/// which is necessary to instantiate it.
 pub struct Prototype {
     pub reference: super::MeshRef,
     type_ids: Box<[TypeId]>,

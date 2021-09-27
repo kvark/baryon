@@ -16,3 +16,4 @@ For more features and bigger community, consider [Bevy](https://github.com/bevye
 For better performance and experimental high-tech, consider [Rend3](https://github.com/BVE-Reborn/rend3/).
 
 ![cube-ception](etc/cubeception.png)
+![pickachu](etc/pickachu.png)

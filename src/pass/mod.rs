@@ -3,7 +3,7 @@ mod phong;
 mod real;
 mod solid;
 
-pub use flat::{Flat, Sprite};
+pub use flat::Flat;
 pub use phong::{Ambient, Phong, PhongConfig, Shader};
 pub use real::{Material, Real, RealConfig};
 pub use solid::{Solid, SolidConfig};

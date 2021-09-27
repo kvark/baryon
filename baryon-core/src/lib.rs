@@ -55,14 +55,19 @@ impl Target {
     }
 }
 
+// A silly attempt to hide the `wgpu` as an implementation detail
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct TargetFormat(pub wgpu::TextureFormat);
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct TargetRef(u8);
 
 pub struct Image {
     pub view: wgpu::TextureView,
+    pub size: wgpu::Extent3d,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub struct ImageRef(u32);
 
 pub struct Context {
@@ -209,6 +214,10 @@ impl Context {
     pub fn add_mesh(&mut self) -> MeshBuilder {
         MeshBuilder::new(self)
     }
+
+    pub fn surface_format(&self) -> Option<TargetFormat> {
+        self.surface.as_ref().map(|s| TargetFormat(s.config.format))
+    }
 }
 
 impl Drop for Context {
@@ -221,6 +230,7 @@ impl Drop for Context {
 pub trait ContextDetail {
     fn get_target(&self, tr: TargetRef) -> &Target;
     fn get_mesh(&self, mr: MeshRef) -> &Mesh;
+    fn get_image(&self, ir: ImageRef) -> &Image;
     fn device(&self) -> &wgpu::Device;
     fn queue(&self) -> &wgpu::Queue;
 }
@@ -231,6 +241,9 @@ impl ContextDetail for Context {
     }
     fn get_mesh(&self, mr: MeshRef) -> &Mesh {
         &self.meshes[mr.0 as usize]
+    }
+    fn get_image(&self, ir: ImageRef) -> &Image {
+        &self.images[ir.0 as usize]
     }
     fn device(&self) -> &wgpu::Device {
         &self.device
@@ -309,6 +322,12 @@ pub struct LightBuilder {
     kind: LightKind,
 }
 
+pub struct SpriteBuilder {
+    raw: hecs::EntityBuilder,
+    image: ImageRef,
+    uv: Option<UvRange>,
+}
+
 impl Scene {
     pub fn new() -> Self {
         Self {
@@ -341,6 +360,19 @@ impl Scene {
             kind: EntityBuilder {
                 raw,
                 mesh: prototype.reference,
+            },
+        }
+    }
+
+    pub fn add_sprite(&mut self, image: ImageRef) -> ObjectBuilder<SpriteBuilder> {
+        let raw = hecs::EntityBuilder::new();
+        ObjectBuilder {
+            scene: self,
+            node: Node::default(),
+            kind: SpriteBuilder {
+                raw,
+                image,
+                uv: None,
             },
         }
     }
@@ -389,9 +421,37 @@ impl Scene {
     }
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct MeshRef(u32);
+
 pub struct Entity {
     pub node: NodeRef,
     pub mesh: MeshRef,
+}
+
+pub type UvRange = ops::Range<mint::Point2<i16>>;
+
+pub struct Sprite {
+    pub node: NodeRef,
+    pub image: ImageRef,
+    pub uv: Option<UvRange>,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub enum LightKind {
+    Directional,
+    Point,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct LightRef(u32);
+
+#[derive(Debug)]
+pub struct Light {
+    pub node: NodeRef,
+    pub color: Color,
+    pub intensity: f32,
+    pub kind: LightKind,
 }
 
 pub struct ObjectBuilder<'a, T> {
@@ -437,6 +497,27 @@ impl ObjectBuilder<'_, EntityBuilder> {
     }
 }
 
+impl ObjectBuilder<'_, SpriteBuilder> {
+    pub fn uv(&mut self, uv: UvRange) -> &mut Self {
+        self.kind.uv = Some(uv);
+        self
+    }
+
+    pub fn build(&mut self) -> EntityRef {
+        let sprite = Sprite {
+            node: if self.node.local == space::Space::default() {
+                self.node.parent
+            } else {
+                self.scene.add_node_impl(&mut self.node)
+            },
+            image: self.kind.image,
+            uv: self.kind.uv.take(),
+        };
+        let built = self.kind.raw.add(sprite).build();
+        self.scene.world.spawn(built)
+    }
+}
+
 impl ObjectBuilder<'_, LightBuilder> {
     pub fn intensity(&mut self, intensity: f32) -> &mut Self {
         self.kind.intensity = intensity;
@@ -463,24 +544,4 @@ impl ObjectBuilder<'_, LightBuilder> {
         self.scene.lights.push(light);
         LightRef(index as u32)
     }
-}
-
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
-pub struct MeshRef(u32);
-
-#[derive(Clone, Copy, Debug)]
-pub enum LightKind {
-    Directional,
-    Point,
-}
-
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
-pub struct LightRef(u32);
-
-#[derive(Debug)]
-pub struct Light {
-    pub node: NodeRef,
-    pub color: Color,
-    pub intensity: f32,
-    pub kind: LightKind,
 }

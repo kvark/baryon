@@ -53,11 +53,6 @@ struct Locals {
 }
 
 #[derive(Eq, Hash, PartialEq)]
-struct PipelineKey {
-    target_format: wgpu::TextureFormat,
-}
-
-#[derive(Eq, Hash, PartialEq)]
 struct LocalKey {
     uniform_buf_index: usize,
 }
@@ -77,10 +72,8 @@ impl Default for RealConfig {
     }
 }
 
-struct PipelineInfo {
-    layout: wgpu::PipelineLayout,
-    shader_module: wgpu::ShaderModule,
-    primitive_state: wgpu::PrimitiveState,
+struct Pipelines {
+    main: wgpu::RenderPipeline,
 }
 
 /// Realistic renderer.
@@ -94,12 +87,18 @@ pub struct Real {
     local_bind_group_layout: wgpu::BindGroupLayout,
     local_bind_groups: FxHashMap<LocalKey, wgpu::BindGroup>,
     uniform_pool: super::BufferPool,
-    pipeline_info: PipelineInfo,
-    pipelines: FxHashMap<PipelineKey, wgpu::RenderPipeline>,
+    pipelines: Pipelines,
 }
 
 impl Real {
     pub fn new(config: &RealConfig, context: &crate::Context) -> Self {
+        Self::new_offscreen(config, context.surface_info().unwrap(), context)
+    }
+    pub fn new_offscreen(
+        config: &RealConfig,
+        target_info: crate::TargetInfo,
+        context: &crate::Context,
+    ) -> Self {
         let d = context.device();
         let shader_module = d.create_shader_module(&wgpu::ShaderModuleDescriptor {
             label: Some("real"),
@@ -176,11 +175,51 @@ impl Real {
             }],
         });
 
-        let pipeline_layout = d.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-            label: Some("real"),
-            bind_group_layouts: &[&global_bgl, &local_bgl],
-            push_constant_ranges: &[],
-        });
+        let pipelines = {
+            let pipeline_layout = d.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                label: Some("real"),
+                bind_group_layouts: &[&global_bgl, &local_bgl],
+                push_constant_ranges: &[],
+            });
+            let primitive = wgpu::PrimitiveState {
+                cull_mode: if config.cull_back_faces {
+                    Some(wgpu::Face::Back)
+                } else {
+                    None
+                },
+                ..Default::default()
+            };
+            let multisample = wgpu::MultisampleState {
+                count: target_info.sample_count,
+                ..Default::default()
+            };
+
+            Pipelines {
+                main: d.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+                    label: Some("real"),
+                    layout: Some(&pipeline_layout),
+                    vertex: wgpu::VertexState {
+                        buffers: &[crate::Position::layout::<0>(), crate::Normal::layout::<2>()],
+                        module: &shader_module,
+                        entry_point: "main_vs",
+                    },
+                    primitive,
+                    depth_stencil: Some(wgpu::DepthStencilState {
+                        format: DEPTH_FORMAT,
+                        depth_compare: wgpu::CompareFunction::LessEqual,
+                        depth_write_enabled: true,
+                        bias: Default::default(),
+                        stencil: Default::default(),
+                    }),
+                    multisample,
+                    fragment: Some(wgpu::FragmentState {
+                        targets: &[target_info.format.into()],
+                        module: &shader_module,
+                        entry_point: "main_fs",
+                    }),
+                }),
+            }
+        };
 
         Self {
             depth_texture: None,
@@ -191,19 +230,7 @@ impl Real {
             local_bind_group_layout: local_bgl,
             local_bind_groups: Default::default(),
             uniform_pool: super::BufferPool::uniform("real locals", d),
-            pipeline_info: PipelineInfo {
-                layout: pipeline_layout,
-                shader_module,
-                primitive_state: wgpu::PrimitiveState {
-                    cull_mode: if config.cull_back_faces {
-                        Some(wgpu::Face::Back)
-                    } else {
-                        None
-                    },
-                    ..Default::default()
-                },
-            },
-            pipelines: Default::default(),
+            pipelines,
         }
     }
 }
@@ -237,36 +264,6 @@ impl bc::Pass for Real {
             let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
             self.depth_texture = Some((view, target.size));
         }
-
-        let info = &self.pipeline_info;
-        let key = PipelineKey {
-            target_format: target.format,
-        };
-        let pipeline = self.pipelines.entry(key).or_insert_with(|| {
-            device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-                label: Some("real"),
-                layout: Some(&info.layout),
-                vertex: wgpu::VertexState {
-                    buffers: &[crate::Position::layout::<0>(), crate::Normal::layout::<2>()],
-                    module: &info.shader_module,
-                    entry_point: "main_vs",
-                },
-                primitive: info.primitive_state,
-                depth_stencil: Some(wgpu::DepthStencilState {
-                    format: DEPTH_FORMAT,
-                    depth_compare: wgpu::CompareFunction::LessEqual,
-                    depth_write_enabled: true,
-                    bias: Default::default(),
-                    stencil: Default::default(),
-                }),
-                multisample: wgpu::MultisampleState::default(),
-                fragment: Some(wgpu::FragmentState {
-                    targets: &[target.format.into()],
-                    module: &info.shader_module,
-                    entry_point: "main_fs",
-                }),
-            })
-        });
 
         let nodes = scene.bake();
         self.uniform_pool.reset();
@@ -361,7 +358,7 @@ impl bc::Pass for Real {
                 }),
             });
 
-            pass.set_pipeline(pipeline);
+            pass.set_pipeline(&self.pipelines.main);
             pass.set_bind_group(0, &self.global_bind_group, &[]);
 
             for (_, (entity, &color, mat)) in scene

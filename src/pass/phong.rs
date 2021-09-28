@@ -99,7 +99,6 @@ impl Phong {
     pub fn new(config: &PhongConfig, context: &crate::Context) -> Self {
         Self::new_offscreen(config, context.surface_info().unwrap(), context)
     }
-
     pub fn new_offscreen(
         config: &PhongConfig,
         target_info: crate::TargetInfo,

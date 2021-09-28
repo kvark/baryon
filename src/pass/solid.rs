@@ -19,11 +19,6 @@ struct Locals {
 }
 
 #[derive(Eq, Hash, PartialEq)]
-struct PipelineKey {
-    target_format: wgpu::TextureFormat,
-}
-
-#[derive(Eq, Hash, PartialEq)]
 struct LocalKey {
     uniform_buf_index: usize,
 }
@@ -41,12 +36,6 @@ impl Default for SolidConfig {
     }
 }
 
-struct PipelineInfo {
-    layout: wgpu::PipelineLayout,
-    shader_module: wgpu::ShaderModule,
-    primitive_state: wgpu::PrimitiveState,
-}
-
 pub struct Solid {
     depth_texture: Option<(wgpu::TextureView, wgpu::Extent3d)>,
     global_uniform_buf: wgpu::Buffer,
@@ -54,12 +43,18 @@ pub struct Solid {
     local_bind_group_layout: wgpu::BindGroupLayout,
     local_bind_groups: FxHashMap<LocalKey, wgpu::BindGroup>,
     uniform_pool: super::BufferPool,
-    pipeline_info: PipelineInfo,
-    pipelines: FxHashMap<PipelineKey, wgpu::RenderPipeline>,
+    pipeline: wgpu::RenderPipeline,
 }
 
 impl Solid {
     pub fn new(config: &SolidConfig, context: &crate::Context) -> Self {
+        Self::new_offscreen(config, context.surface_info().unwrap(), context)
+    }
+    pub fn new_offscreen(
+        config: &SolidConfig,
+        target_info: crate::TargetInfo,
+        context: &crate::Context,
+    ) -> Self {
         let d = context.device();
         let shader_module = d.create_shader_module(&wgpu::ShaderModuleDescriptor {
             label: Some("solid"),
@@ -115,6 +110,36 @@ impl Solid {
             bind_group_layouts: &[&global_bgl, &local_bgl],
             push_constant_ranges: &[],
         });
+        let pipeline = d.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some("solid"),
+            layout: Some(&pipeline_layout),
+            vertex: wgpu::VertexState {
+                buffers: &[crate::Position::layout::<0>()],
+                module: &shader_module,
+                entry_point: "main_vs",
+            },
+            primitive: wgpu::PrimitiveState {
+                cull_mode: if config.cull_back_faces {
+                    Some(wgpu::Face::Back)
+                } else {
+                    None
+                },
+                ..Default::default()
+            },
+            depth_stencil: Some(wgpu::DepthStencilState {
+                format: DEPTH_FORMAT,
+                depth_compare: wgpu::CompareFunction::LessEqual,
+                depth_write_enabled: true,
+                bias: Default::default(),
+                stencil: Default::default(),
+            }),
+            multisample: wgpu::MultisampleState::default(),
+            fragment: Some(wgpu::FragmentState {
+                targets: &[target_info.format.into()],
+                module: &shader_module,
+                entry_point: "main_fs",
+            }),
+        });
 
         Self {
             depth_texture: None,
@@ -123,19 +148,7 @@ impl Solid {
             local_bind_group_layout: local_bgl,
             local_bind_groups: Default::default(),
             uniform_pool: super::BufferPool::uniform("solid locals", d),
-            pipeline_info: PipelineInfo {
-                layout: pipeline_layout,
-                shader_module,
-                primitive_state: wgpu::PrimitiveState {
-                    cull_mode: if config.cull_back_faces {
-                        Some(wgpu::Face::Back)
-                    } else {
-                        None
-                    },
-                    ..Default::default()
-                },
-            },
-            pipelines: Default::default(),
+            pipeline,
         }
     }
 }
@@ -168,36 +181,6 @@ impl bc::Pass for Solid {
             let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
             self.depth_texture = Some((view, target.size));
         }
-
-        let info = &self.pipeline_info;
-        let key = PipelineKey {
-            target_format: target.format,
-        };
-        let pipeline = self.pipelines.entry(key).or_insert_with(|| {
-            device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-                label: Some("solid"),
-                layout: Some(&info.layout),
-                vertex: wgpu::VertexState {
-                    buffers: &[crate::Position::layout::<0>()],
-                    module: &info.shader_module,
-                    entry_point: "main_vs",
-                },
-                primitive: info.primitive_state,
-                depth_stencil: Some(wgpu::DepthStencilState {
-                    format: DEPTH_FORMAT,
-                    depth_compare: wgpu::CompareFunction::LessEqual,
-                    depth_write_enabled: true,
-                    bias: Default::default(),
-                    stencil: Default::default(),
-                }),
-                multisample: wgpu::MultisampleState::default(),
-                fragment: Some(wgpu::FragmentState {
-                    targets: &[target.format.into()],
-                    module: &info.shader_module,
-                    entry_point: "main_fs",
-                }),
-            })
-        });
 
         let nodes = scene.bake();
         self.uniform_pool.reset();
@@ -262,7 +245,7 @@ impl bc::Pass for Solid {
                     stencil_ops: None,
                 }),
             });
-            pass.set_pipeline(&pipeline);
+            pass.set_pipeline(&self.pipeline);
             pass.set_bind_group(0, &self.global_bind_group, &[]);
 
             for (_, (entity, color)) in scene

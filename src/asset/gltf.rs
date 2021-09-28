@@ -4,7 +4,12 @@ use std::path::Path;
 struct MeshScratch {
     indices: Vec<u16>,
     positions: Vec<crate::Position>,
+    tex_coords: Vec<crate::TexCoords>,
     normals: Vec<crate::Normal>,
+}
+
+struct Texture {
+    image: crate::ImageRef,
 }
 
 struct Primitive {
@@ -14,9 +19,55 @@ struct Primitive {
     material: crate::pass::Material,
 }
 
+fn load_texture(mut data: gltf::image::Data, context: &mut crate::Context) -> Texture {
+    let format = match data.format {
+        gltf::image::Format::R8 => wgpu::TextureFormat::R8Unorm,
+        gltf::image::Format::R8G8 => wgpu::TextureFormat::Rg8Unorm,
+        gltf::image::Format::R8G8B8 | gltf::image::Format::B8G8R8 => {
+            log::warn!("Converting RGB to RGBA...");
+            let original = data.pixels;
+            data.pixels = Vec::new();
+            for chunk in original.chunks(3) {
+                data.pixels.push(chunk[0]);
+                data.pixels.push(chunk[1]);
+                data.pixels.push(chunk[2]);
+                data.pixels.push(0xFF);
+            }
+            if data.format == gltf::image::Format::R8G8B8 {
+                wgpu::TextureFormat::Rgba8UnormSrgb
+            } else {
+                wgpu::TextureFormat::Bgra8UnormSrgb
+            }
+        }
+        gltf::image::Format::R16G16B16 => panic!("RGB16 is outdated"),
+        gltf::image::Format::R8G8B8A8 => wgpu::TextureFormat::Rgba8UnormSrgb,
+        gltf::image::Format::B8G8R8A8 => wgpu::TextureFormat::Bgra8UnormSrgb,
+        gltf::image::Format::R16 => wgpu::TextureFormat::R16Float,
+        gltf::image::Format::R16G16 => wgpu::TextureFormat::Rg16Float,
+        gltf::image::Format::R16G16B16A16 => wgpu::TextureFormat::Rgba16Float,
+    };
+
+    let desc = wgpu::TextureDescriptor {
+        label: None,
+        size: wgpu::Extent3d {
+            width: data.width,
+            height: data.height,
+            depth_or_array_layers: 1,
+        },
+        mip_level_count: 1,
+        sample_count: 1,
+        dimension: wgpu::TextureDimension::D2,
+        format,
+        usage: wgpu::TextureUsages::TEXTURE_BINDING,
+    };
+    let image = context.add_image_from_data(&desc, &data.pixels);
+    Texture { image }
+}
+
 fn load_primitive<'a>(
     primitive: gltf::Primitive<'a>,
     buffers: &[gltf::buffer::Data],
+    textures: &[Texture],
     context: &mut crate::Context,
     scratch: &mut MeshScratch,
 ) -> Primitive {
@@ -35,6 +86,14 @@ fn load_primitive<'a>(
         mesh_builder.vertex(&scratch.positions);
     }
 
+    if let Some(tex_coords) = reader.read_tex_coords(0) {
+        scratch.tex_coords.clear();
+        scratch
+            .tex_coords
+            .extend(tex_coords.into_u16().map(crate::TexCoords));
+        mesh_builder.vertex(&scratch.tex_coords);
+    }
+
     if let Some(normals) = reader.read_normals() {
         scratch.normals.clear();
         scratch.normals.extend(normals.map(crate::Normal));
@@ -45,6 +104,9 @@ fn load_primitive<'a>(
     let pbr = mat.pbr_metallic_roughness();
     let base_color = pbr.base_color_factor();
     let material = crate::pass::Material {
+        base_color_map: pbr
+            .base_color_texture()
+            .map(|t| textures[t.texture().index()].image),
         emissive_color: crate::Color::from_rgb_alpha(mat.emissive_factor(), 0.0),
         metallic_factor: pbr.metallic_factor(),
         roughness_factor: pbr.roughness_factor(),
@@ -67,14 +129,21 @@ pub fn load_gltf(
     parent: crate::NodeRef,
     context: &mut crate::Context,
 ) {
-    let (gltf, buffers, _images) = gltf::import(path).expect("invalid glTF 2.0");
+    let (gltf, buffers, images) = gltf::import(path).expect("invalid glTF 2.0");
+
+    let mut textures = Vec::with_capacity(images.len());
+    for (_texture, data) in gltf.textures().zip(images.into_iter()) {
+        let texture = load_texture(data, context);
+        textures.push(texture);
+    }
 
     let mut prototypes = Vec::with_capacity(gltf.meshes().len());
     let mut scratch = MeshScratch::default();
     for gltf_mesh in gltf.meshes() {
         let mut primitives = Vec::new();
         for gltf_primitive in gltf_mesh.primitives() {
-            let primitive = load_primitive(gltf_primitive, &buffers, context, &mut scratch);
+            let primitive =
+                load_primitive(gltf_primitive, &buffers, &textures, context, &mut scratch);
             primitives.push(primitive);
         }
         prototypes.push(primitives);

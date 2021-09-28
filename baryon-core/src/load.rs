@@ -2,6 +2,28 @@ use std::{fs::File, io, path::Path};
 use wgpu::util::DeviceExt as _;
 
 impl super::Context {
+    pub fn add_image_from_raw(
+        &mut self,
+        texture: wgpu::Texture,
+        size: wgpu::Extent3d,
+    ) -> super::ImageRef {
+        let index = self.images.len();
+        let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
+        self.images.push(super::Image { view, size });
+        super::ImageRef(index as u32)
+    }
+
+    pub fn add_image_from_data(
+        &mut self,
+        desc: &wgpu::TextureDescriptor,
+        data: &[u8],
+    ) -> super::ImageRef {
+        let texture = self
+            .device
+            .create_texture_with_data(&self.queue, desc, data);
+        self.add_image_from_raw(texture, desc.size)
+    }
+
     pub fn load_image(&mut self, path_ref: impl AsRef<Path>) -> super::ImageRef {
         let path = path_ref.as_ref();
         let image_format = image::ImageFormat::from_extension(path.extension().unwrap())
@@ -103,9 +125,6 @@ impl super::Context {
             (texture, size)
         };
 
-        let index = self.images.len();
-        let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
-        self.images.push(super::Image { view, size });
-        super::ImageRef(index as u32)
+        self.add_image_from_raw(texture, size)
     }
 }

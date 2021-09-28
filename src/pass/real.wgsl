@@ -1,13 +1,13 @@
 struct Attributes {
     [[location(0)]] position: vec3<f32>;
-    //[[location(1)]] tex_coords: vec2<f32>;
+    [[location(1)]] tex_coords: vec2<f32>;
     [[location(2)]] normal: vec3<f32>;
 };
 
 struct Varyings {
     [[builtin(position)]] clip_position: vec4<f32>;
     [[location(0)]] world_pos: vec3<f32>;
-    //[[location(1)]] tex_coords: vec2<f32>;
+    [[location(1)]] tex_coords: vec2<f32>;
     [[location(2)]] normal: vec3<f32>;
 };
 
@@ -44,6 +44,7 @@ fn main_vs(in: Attributes) -> Varyings {
     return Varyings(
         globals.view_proj * vec4<f32>(world, 1.0),
         world,
+        in.tex_coords,
         normal,
     );
 }
@@ -63,6 +64,13 @@ struct LightArray {
 };
 [[group(0), binding(1)]]
 var<storage> lights: LightArray;
+
+[[group(0), binding(2)]]
+var sam: sampler;
+
+[[group(1), binding(1)]]
+var base_color_map: texture_2d<f32>;
+
 
 struct PbrInfo {
     ndotl: f32;
@@ -118,9 +126,11 @@ fn main_fs(in: Varyings) -> [[location(0)]] vec4<f32> {
     let perceptual_roughness = clamp(locals.metallic_roughness_values.y, MIN_ROUGHNESS, 1.0);
     let metallic = clamp(locals.metallic_roughness_values.x, 0.0, 1.0);
 
+    let base_color = locals.base_color_factor * textureSample(base_color_map, sam, in.tex_coords);
+
     let f0 = 0.04;
-    let diffuse_color = mix(locals.base_color_factor.xyz * (1.0 - f0), vec3<f32>(0.0), metallic);
-    let specular_color = mix(vec3<f32>(f0), locals.base_color_factor.xyz, metallic);
+    let diffuse_color = mix(base_color.xyz * (1.0 - f0), vec3<f32>(0.0), metallic);
+    let specular_color = mix(vec3<f32>(f0), base_color.xyz, metallic);
     let reflectance = max(max(specular_color.x, specular_color.y), specular_color.z);
 
     // For typical incident reflectance range (between 4% to 100%) set the grazing
@@ -170,5 +180,5 @@ fn main_fs(in: Varyings) -> [[location(0)]] vec4<f32> {
         color = color + ndotl * light.color_intensity.w * light.color_intensity.xyz * (diffuse_contrib + spec_contrib);
     }
 
-    return vec4<f32>(color, locals.base_color_factor.a);
+    return vec4<f32>(color, base_color.a);
 }

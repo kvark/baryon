@@ -1,9 +1,11 @@
 use bc::ContextDetail as _;
 use fxhash::FxHashMap;
 use std::mem;
+use wgpu::util::DeviceExt as _;
 
 #[derive(Clone, Copy, Debug)]
 pub struct Material {
+    pub base_color_map: Option<crate::ImageRef>,
     pub emissive_color: crate::Color,
     pub metallic_factor: f32,
     pub roughness_factor: f32,
@@ -14,6 +16,7 @@ pub struct Material {
 impl Default for Material {
     fn default() -> Self {
         Self {
+            base_color_map: None,
             emissive_color: crate::Color(0),
             metallic_factor: 1.0,
             roughness_factor: 0.0,
@@ -55,6 +58,7 @@ struct Locals {
 #[derive(Eq, Hash, PartialEq)]
 struct LocalKey {
     uniform_buf_index: usize,
+    base_color_map: Option<crate::ImageRef>,
 }
 
 #[derive(Debug)]
@@ -76,6 +80,12 @@ struct Pipelines {
     main: wgpu::RenderPipeline,
 }
 
+struct Instance {
+    mesh: crate::MeshRef,
+    locals_bl: super::BufferLocation,
+    base_color_map: Option<crate::ImageRef>,
+}
+
 /// Realistic renderer.
 /// Follows Disney PBR.
 pub struct Real {
@@ -88,6 +98,8 @@ pub struct Real {
     local_bind_groups: FxHashMap<LocalKey, wgpu::BindGroup>,
     uniform_pool: super::BufferPool,
     pipelines: Pipelines,
+    blank_color_view: wgpu::TextureView,
+    instances: Vec<Instance>,
 }
 
 impl Real {
@@ -131,6 +143,15 @@ impl Real {
                     },
                     count: None,
                 },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 2,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Sampler {
+                        filtering: true,
+                        comparison: false,
+                    },
+                    count: None,
+                },
             ],
         });
         let global_uniform_buf = d.create_buffer(&wgpu::BufferDescriptor {
@@ -145,6 +166,12 @@ impl Real {
             usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
+        let sampler = d.create_sampler(&wgpu::SamplerDescriptor {
+            label: Some("real sampler"),
+            min_filter: wgpu::FilterMode::Linear,
+            mag_filter: wgpu::FilterMode::Linear,
+            ..Default::default()
+        });
         let global_bind_group = d.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("real globals"),
             layout: &global_bgl,
@@ -157,22 +184,38 @@ impl Real {
                     binding: 1,
                     resource: light_buf.as_entire_binding(),
                 },
+                wgpu::BindGroupEntry {
+                    binding: 2,
+                    resource: wgpu::BindingResource::Sampler(&sampler),
+                },
             ],
         });
 
         let locals_size = mem::size_of::<Locals>() as wgpu::BufferAddress;
         let local_bgl = d.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("real locals"),
-            entries: &[wgpu::BindGroupLayoutEntry {
-                binding: 0,
-                visibility: wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT,
-                ty: wgpu::BindingType::Buffer {
-                    ty: wgpu::BufferBindingType::Uniform,
-                    has_dynamic_offset: true,
-                    min_binding_size: wgpu::BufferSize::new(locals_size),
+            entries: &[
+                wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: true,
+                        min_binding_size: wgpu::BufferSize::new(locals_size),
+                    },
+                    count: None,
                 },
-                count: None,
-            }],
+                wgpu::BindGroupLayoutEntry {
+                    binding: 1,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Texture {
+                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                        view_dimension: wgpu::TextureViewDimension::D2,
+                        multisampled: false,
+                    },
+                    count: None,
+                },
+            ],
         });
 
         let pipelines = {
@@ -199,7 +242,11 @@ impl Real {
                     label: Some("real"),
                     layout: Some(&pipeline_layout),
                     vertex: wgpu::VertexState {
-                        buffers: &[crate::Position::layout::<0>(), crate::Normal::layout::<2>()],
+                        buffers: &[
+                            crate::Position::layout::<0>(),
+                            crate::TexCoords::layout::<1>(),
+                            crate::Normal::layout::<2>(),
+                        ],
                         module: &shader_module,
                         entry_point: "main_vs",
                     },
@@ -221,6 +268,24 @@ impl Real {
             }
         };
 
+        let blank_color_view = {
+            let desc = wgpu::TextureDescriptor {
+                label: Some("dummy"),
+                size: wgpu::Extent3d {
+                    width: 1,
+                    height: 1,
+                    depth_or_array_layers: 1,
+                },
+                mip_level_count: 1,
+                sample_count: 1,
+                dimension: wgpu::TextureDimension::D2,
+                format: wgpu::TextureFormat::Rgba8UnormSrgb,
+                usage: wgpu::TextureUsages::TEXTURE_BINDING,
+            };
+            let texture = d.create_texture_with_data(context.queue(), &desc, &[0xFF; 4]);
+            texture.create_view(&wgpu::TextureViewDescriptor::default())
+        };
+
         Self {
             depth_texture: None,
             global_uniform_buf,
@@ -231,6 +296,8 @@ impl Real {
             local_bind_groups: Default::default(),
             uniform_pool: super::BufferPool::uniform("real locals", d),
             pipelines,
+            blank_color_view,
+            instances: Vec::new(),
         }
     }
 }
@@ -306,37 +373,69 @@ impl bc::Pass for Real {
             bytemuck::cast_slice(&lights[..light_count]),
         );
 
-        //TODO: abstract this away
-        // pre-create the bind groups so that we don't need to do it on the fly
-        let local_bgl = &self.local_bind_group_layout;
-        let entity_count = scene
+        //TODO: we can do everything in a single pass if we use
+        // some arena-based hashmap.
+        self.instances.clear();
+
+        for (_, (entity, &color, mat)) in scene
             .world
             .query::<(&bc::Entity, &bc::Color, &Material)>()
             .with::<bc::Vertex<crate::Position>>()
+            .with::<bc::Vertex<crate::TexCoords>>()
             .with::<bc::Vertex<crate::Normal>>()
             .iter()
-            .count();
-        let uniform_pool_size = self
-            .uniform_pool
-            .prepare_for_count::<Locals>(entity_count, device);
-        for uniform_buf_index in 0..uniform_pool_size {
-            let key = LocalKey { uniform_buf_index };
-            let binding = self.uniform_pool.binding::<Locals>(uniform_buf_index);
+        {
+            let space = &nodes[entity.node];
+
+            let locals = Locals {
+                pos_scale: space.pos_scale,
+                rot: space.rot,
+                base_color_factor: color.into_vec4(),
+                emissive_factor: mat.emissive_color.into_vec4(),
+                metallic_roughness_values: [mat.metallic_factor, mat.roughness_factor],
+                normal_scale: mat.normal_scale,
+                occlusion_strength: mat.occlusion_strength,
+            };
+            let locals_bl = self.uniform_pool.alloc(&locals, queue);
+
+            // pre-create local bind group, if needed
+            let key = LocalKey {
+                uniform_buf_index: locals_bl.index,
+                base_color_map: mat.base_color_map,
+            };
+            let binding = self.uniform_pool.binding::<Locals>(locals_bl.index);
+            let local_bgl = &self.local_bind_group_layout;
+            let blank_color_view = &self.blank_color_view;
 
             self.local_bind_groups.entry(key).or_insert_with(|| {
+                let base_color_view = match mat.base_color_map {
+                    Some(image) => &context.get_image(image).view,
+                    None => blank_color_view,
+                };
                 device.create_bind_group(&wgpu::BindGroupDescriptor {
                     label: Some("real locals"),
                     layout: local_bgl,
-                    entries: &[wgpu::BindGroupEntry {
-                        binding: 0,
-                        resource: wgpu::BindingResource::Buffer(binding),
-                    }],
+                    entries: &[
+                        wgpu::BindGroupEntry {
+                            binding: 0,
+                            resource: wgpu::BindingResource::Buffer(binding),
+                        },
+                        wgpu::BindGroupEntry {
+                            binding: 1,
+                            resource: wgpu::BindingResource::TextureView(base_color_view),
+                        },
+                    ],
                 })
+            });
+
+            self.instances.push(Instance {
+                mesh: entity.mesh,
+                locals_bl,
+                base_color_map: mat.base_color_map,
             });
         }
 
         let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
-
         {
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("real"),
@@ -361,35 +460,19 @@ impl bc::Pass for Real {
             pass.set_pipeline(&self.pipelines.main);
             pass.set_bind_group(0, &self.global_bind_group, &[]);
 
-            for (_, (entity, &color, mat)) in scene
-                .world
-                .query::<(&bc::Entity, &bc::Color, &Material)>()
-                .with::<bc::Vertex<crate::Position>>()
-                .with::<bc::Vertex<crate::Normal>>()
-                .iter()
-            {
-                let space = &nodes[entity.node];
-                let mesh = context.get_mesh(entity.mesh);
-
-                let locals = Locals {
-                    pos_scale: space.pos_scale,
-                    rot: space.rot,
-                    base_color_factor: color.into_vec4(),
-                    emissive_factor: mat.emissive_color.into_vec4(),
-                    metallic_roughness_values: [mat.metallic_factor, mat.roughness_factor],
-                    normal_scale: mat.normal_scale,
-                    occlusion_strength: mat.occlusion_strength,
-                };
-                let bl = self.uniform_pool.alloc(&locals, queue);
+            for inst in self.instances.drain(..) {
+                let mesh = context.get_mesh(inst.mesh);
 
                 let key = LocalKey {
-                    uniform_buf_index: bl.index,
+                    uniform_buf_index: inst.locals_bl.index,
+                    base_color_map: inst.base_color_map,
                 };
                 let local_bg = &self.local_bind_groups[&key];
-                pass.set_bind_group(1, local_bg, &[bl.offset]);
+                pass.set_bind_group(1, local_bg, &[inst.locals_bl.offset]);
 
                 pass.set_vertex_buffer(0, mesh.vertex_slice::<crate::Position>());
-                pass.set_vertex_buffer(1, mesh.vertex_slice::<crate::Normal>());
+                pass.set_vertex_buffer(1, mesh.vertex_slice::<crate::TexCoords>());
+                pass.set_vertex_buffer(2, mesh.vertex_slice::<crate::Normal>());
 
                 if let Some(ref is) = mesh.index_stream {
                     pass.set_index_buffer(mesh.buffer.slice(is.offset..), is.format);

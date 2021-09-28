@@ -334,8 +334,8 @@ impl bc::Pass for Phong {
                 let space = &nodes[light.node];
                 let mut pos = space.pos_scale;
                 pos[3] = match light.kind {
-                    bc::LightKind::Directional => 1.0,
-                    bc::LightKind::Point => 0.0,
+                    bc::LightKind::Directional => 0.0,
+                    bc::LightKind::Point => 1.0,
                 };
                 let mut color_intensity = light.color.into_vec4();
                 color_intensity[3] = light.intensity;

@@ -149,7 +149,7 @@ fn main_fs(in: Varyings) -> [[location(0)]] vec4<f32> {
     let num_lights = min(MAX_LIGHTS, arrayLength(&lights.data));
     for (var i = 0u; i<num_lights; i = i + 1u) {
         let light = lights.data[i];
-        let l = qrot(light.rot, vec3<f32>(0.0, 0.0, 1.0)); //TODO: check
+        let l = normalize(light.pos.xyz - light.pos.w * in.world_pos);
         let h = normalize(l + v);
         let reflection = -normalize(reflect(v, n));
 

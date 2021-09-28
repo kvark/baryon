@@ -11,18 +11,19 @@ fn main() {
         node: scene
             .add_node()
             .position([1f32, 2.0, 3.0].into())
-            .look_at([0.5, 0.8, 0.0].into(), [0f32, 1.0, 0.0].into())
+            .look_at([0.0, 0.8, 0.0].into(), [0f32, 1.0, 0.0].into())
             .build(),
         background: baryon::Color(0xFF203040),
     };
 
+    let node = scene.add_node().build();
     let _ = baryon::asset::load_gltf(
         format!(
             "{}/examples/assets/Duck/Duck.gltf",
             env!("CARGO_MANIFEST_DIR")
         ),
         &mut scene,
-        baryon::NodeRef::default(),
+        node,
         &mut context,
     );
 
@@ -30,6 +31,7 @@ fn main() {
         .add_point_light()
         .position([3.0, 3.0, 3.0].into())
         .color(baryon::Color(0xFFFFFFFF))
+        .intensity(2.0)
         .build();
 
     let mut pass = baryon::pass::Real::new(
@@ -45,6 +47,7 @@ fn main() {
             context.resize(width, height);
         }
         Event::Draw => {
+            scene[node].pre_rotate([0.0, 1.0, 0.0].into(), 1.0);
             context.present(&mut pass, &scene, &camera);
         }
         _ => {}

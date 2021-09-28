@@ -45,7 +45,10 @@ pub struct Flat {
 }
 
 impl Flat {
-    pub fn new(target_format: crate::TargetFormat, context: &crate::Context) -> Self {
+    pub fn new(context: &crate::Context) -> Self {
+        Self::new_offscreen(context.surface_info().unwrap(), context)
+    }
+    pub fn new_offscreen(target_info: crate::TargetInfo, context: &crate::Context) -> Self {
         let d = context.device();
         let shader_module = d.create_shader_module(&wgpu::ShaderModuleDescriptor {
             label: Some("flat"),
@@ -151,10 +154,13 @@ impl Flat {
                     ..Default::default()
                 },
                 depth_stencil: None,
-                multisample: wgpu::MultisampleState::default(),
+                multisample: wgpu::MultisampleState {
+                    count: target_info.sample_count,
+                    ..Default::default()
+                },
                 fragment: Some(wgpu::FragmentState {
                     targets: &[wgpu::ColorTargetState {
-                        format: target_format.0,
+                        format: target_info.format,
                         blend: Some(wgpu::BlendState::PREMULTIPLIED_ALPHA_BLENDING),
                         write_mask: wgpu::ColorWrites::all(),
                     }],

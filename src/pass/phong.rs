@@ -8,13 +8,6 @@ pub enum Shader {
     Phong { glossiness: u8 },
 }
 
-#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
-enum ShaderKind {
-    Flat,
-    Gouraud,
-    Phong,
-}
-
 const DEPTH_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Depth24Plus;
 const INTENSITY_THRESHOLD: f32 = 0.1;
 const LIGHT_COUNT: usize = 4;
@@ -45,11 +38,10 @@ struct Locals {
     _pad: [f32; 3],
 }
 
-#[derive(Eq, Hash, PartialEq)]
-struct PipelineKey {
-    target_format: wgpu::TextureFormat,
-    kind: ShaderKind,
-    textured: bool,
+struct Pipelines {
+    flat: wgpu::RenderPipeline,
+    gouraud: wgpu::RenderPipeline,
+    phong: wgpu::RenderPipeline,
 }
 
 #[derive(Eq, Hash, PartialEq)]
@@ -89,12 +81,6 @@ impl Default for PhongConfig {
     }
 }
 
-struct PipelineInfo {
-    layout: wgpu::PipelineLayout,
-    shader_module: wgpu::ShaderModule,
-    primitive_state: wgpu::PrimitiveState,
-}
-
 pub struct Phong {
     depth_texture: Option<(wgpu::TextureView, wgpu::Extent3d)>,
     global_uniform_buf: wgpu::Buffer,
@@ -104,14 +90,21 @@ pub struct Phong {
     local_bind_group_layout: wgpu::BindGroupLayout,
     local_bind_groups: FxHashMap<LocalKey, wgpu::BindGroup>,
     uniform_pool: super::BufferPool,
-    pipeline_info: PipelineInfo,
-    pipelines: FxHashMap<PipelineKey, wgpu::RenderPipeline>,
+    pipelines: Pipelines,
     ambient: Ambient,
     temp_lights: Vec<(f32, u32)>,
 }
 
 impl Phong {
     pub fn new(config: &PhongConfig, context: &crate::Context) -> Self {
+        Self::new_offscreen(config, context.surface_info().unwrap(), context)
+    }
+
+    pub fn new_offscreen(
+        config: &PhongConfig,
+        target_info: crate::TargetInfo,
+        context: &crate::Context,
+    ) -> Self {
         let d = context.device();
         let shader_module = d.create_shader_module(&wgpu::ShaderModuleDescriptor {
             label: Some("phong"),
@@ -188,11 +181,87 @@ impl Phong {
             }],
         });
 
-        let pipeline_layout = d.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-            label: Some("phong"),
-            bind_group_layouts: &[&global_bgl, &local_bgl],
-            push_constant_ranges: &[],
-        });
+        let pipelines = {
+            let pipeline_layout = d.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                label: Some("phong"),
+                bind_group_layouts: &[&global_bgl, &local_bgl],
+                push_constant_ranges: &[],
+            });
+            let vertex_buffers = [crate::Position::layout::<0>(), crate::Normal::layout::<1>()];
+            let primitive = wgpu::PrimitiveState {
+                cull_mode: if config.cull_back_faces {
+                    Some(wgpu::Face::Back)
+                } else {
+                    None
+                },
+                ..Default::default()
+            };
+            let ds = Some(wgpu::DepthStencilState {
+                format: DEPTH_FORMAT,
+                depth_compare: wgpu::CompareFunction::LessEqual,
+                depth_write_enabled: true,
+                bias: Default::default(),
+                stencil: Default::default(),
+            });
+            let multisample = wgpu::MultisampleState {
+                count: target_info.sample_count,
+                ..Default::default()
+            };
+
+            Pipelines {
+                flat: d.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+                    label: Some("phong/flat"),
+                    layout: Some(&pipeline_layout),
+                    vertex: wgpu::VertexState {
+                        buffers: &vertex_buffers,
+                        module: &shader_module,
+                        entry_point: "vs_flat",
+                    },
+                    primitive,
+                    depth_stencil: ds.clone(),
+                    multisample,
+                    fragment: Some(wgpu::FragmentState {
+                        targets: &[target_info.format.into()],
+                        module: &shader_module,
+                        entry_point: "fs_flat",
+                    }),
+                }),
+                gouraud: d.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+                    label: Some("phong/gouraud"),
+                    layout: Some(&pipeline_layout),
+                    vertex: wgpu::VertexState {
+                        buffers: &vertex_buffers,
+                        module: &shader_module,
+                        entry_point: "vs_flat",
+                    },
+                    primitive,
+                    depth_stencil: ds.clone(),
+                    multisample,
+                    fragment: Some(wgpu::FragmentState {
+                        targets: &[target_info.format.into()],
+                        module: &shader_module,
+                        entry_point: "fs_gouraud",
+                    }),
+                }),
+                phong: d.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+                    label: Some("phong"),
+                    layout: Some(&pipeline_layout),
+                    vertex: wgpu::VertexState {
+                        buffers: &vertex_buffers,
+                        module: &shader_module,
+                        entry_point: "vs_phong",
+                    },
+                    primitive,
+                    depth_stencil: ds.clone(),
+                    multisample,
+                    fragment: Some(wgpu::FragmentState {
+                        targets: &[target_info.format.into()],
+                        module: &shader_module,
+                        entry_point: "fs_phong",
+                    }),
+                }),
+            }
+        };
 
         Self {
             depth_texture: None,
@@ -203,19 +272,7 @@ impl Phong {
             local_bind_group_layout: local_bgl,
             local_bind_groups: Default::default(),
             uniform_pool: super::BufferPool::uniform("phong locals", d),
-            pipeline_info: PipelineInfo {
-                layout: pipeline_layout,
-                shader_module,
-                primitive_state: wgpu::PrimitiveState {
-                    cull_mode: if config.cull_back_faces {
-                        Some(wgpu::Face::Back)
-                    } else {
-                        None
-                    },
-                    ..Default::default()
-                },
-            },
-            pipelines: Default::default(),
+            pipelines,
             ambient: config.ambient,
             temp_lights: Vec::new(),
         }
@@ -249,55 +306,6 @@ impl bc::Pass for Phong {
             });
             let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
             self.depth_texture = Some((view, target.size));
-        }
-
-        let info = &self.pipeline_info;
-        for &kind in &[ShaderKind::Flat, ShaderKind::Gouraud, ShaderKind::Phong] {
-            for &textured in &[false, true] {
-                let key = PipelineKey {
-                    target_format: target.format,
-                    kind,
-                    textured,
-                };
-                let _ = self.pipelines.entry(key).or_insert_with(|| {
-                    let label = format!(
-                        "phong-{:?}{}",
-                        kind,
-                        if textured { "-textured" } else { "" },
-                    );
-                    let (vs, fs) = match kind {
-                        ShaderKind::Flat => ("vs_flat", "fs_flat"),
-                        ShaderKind::Gouraud => ("vs_flat", "fs_gouraud"),
-                        ShaderKind::Phong => ("vs_phong", "fs_phong"),
-                    };
-                    device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-                        label: Some(&label),
-                        layout: Some(&info.layout),
-                        vertex: wgpu::VertexState {
-                            buffers: &[
-                                crate::Position::layout::<0>(),
-                                crate::Normal::layout::<1>(),
-                            ],
-                            module: &info.shader_module,
-                            entry_point: vs,
-                        },
-                        primitive: info.primitive_state,
-                        depth_stencil: Some(wgpu::DepthStencilState {
-                            format: DEPTH_FORMAT,
-                            depth_compare: wgpu::CompareFunction::LessEqual,
-                            depth_write_enabled: true,
-                            bias: Default::default(),
-                            stencil: Default::default(),
-                        }),
-                        multisample: wgpu::MultisampleState::default(),
-                        fragment: Some(wgpu::FragmentState {
-                            targets: &[target.format.into()],
-                            module: &info.shader_module,
-                            entry_point: fs,
-                        }),
-                    })
-                });
-            }
         }
 
         let nodes = scene.bake();
@@ -439,16 +447,11 @@ impl bc::Pass for Phong {
                 }
 
                 //TODO: check for texture coordinates
-                let key = PipelineKey {
-                    target_format: target.format,
-                    kind: match shader {
-                        Shader::Gouraud { flat: true } => ShaderKind::Flat,
-                        Shader::Gouraud { flat: false } => ShaderKind::Gouraud,
-                        Shader::Phong { .. } => ShaderKind::Phong,
-                    },
-                    textured: false,
-                };
-                pass.set_pipeline(&self.pipelines[&key]);
+                pass.set_pipeline(match shader {
+                    Shader::Gouraud { flat: true } => &self.pipelines.flat,
+                    Shader::Gouraud { flat: false } => &self.pipelines.gouraud,
+                    Shader::Phong { .. } => &self.pipelines.phong,
+                });
 
                 let locals = Locals {
                     pos_scale: space.pos_scale,

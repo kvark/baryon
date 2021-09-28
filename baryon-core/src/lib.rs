@@ -55,9 +55,12 @@ impl Target {
     }
 }
 
-// A silly attempt to hide the `wgpu` as an implementation detail
+/// Parameters of a texture target that affect its pipeline compatibility.
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub struct TargetFormat(pub wgpu::TextureFormat);
+pub struct TargetInfo {
+    pub format: wgpu::TextureFormat,
+    pub sample_count: u32,
+}
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct TargetRef(u8);
@@ -215,8 +218,11 @@ impl Context {
         MeshBuilder::new(self)
     }
 
-    pub fn surface_format(&self) -> Option<TargetFormat> {
-        self.surface.as_ref().map(|s| TargetFormat(s.config.format))
+    pub fn surface_info(&self) -> Option<TargetInfo> {
+        self.surface.as_ref().map(|s| TargetInfo {
+            format: s.config.format,
+            sample_count: 1,
+        })
     }
 }
 

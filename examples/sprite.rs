@@ -76,7 +76,7 @@ fn main() {
         },
         ..Default::default()
     };
-    let mut pass = baryon::pass::Flat::new(context.surface_format().unwrap(), &context);
+    let mut pass = baryon::pass::Flat::new(&context);
 
     let image = context.load_image(format!(
         "{}/examples/assets/pickachu.png",

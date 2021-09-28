@@ -24,9 +24,13 @@ fn load_texture(mut data: gltf::image::Data, context: &mut crate::Context) -> Te
         gltf::image::Format::R8 => wgpu::TextureFormat::R8Unorm,
         gltf::image::Format::R8G8 => wgpu::TextureFormat::Rg8Unorm,
         gltf::image::Format::R8G8B8 | gltf::image::Format::B8G8R8 => {
-            log::warn!("Converting RGB to RGBA...");
+            log::warn!(
+                "Converting {}x{} texture from RGB to RGBA...",
+                data.width,
+                data.height
+            );
             let original = data.pixels;
-            data.pixels = Vec::new();
+            data.pixels = Vec::with_capacity(original.len() * 4 / 3);
             for chunk in original.chunks(3) {
                 data.pixels.push(chunk[0]);
                 data.pixels.push(chunk[1]);

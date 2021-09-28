@@ -54,3 +54,6 @@ wgpu = "0.10"
 [dev-dependencies]
 naga = { version = "0.6", features = ["wgsl-in"] }
 pollster = "0.2"
+
+[package.metadata.docs.rs]
+all-features = true

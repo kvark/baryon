@@ -145,7 +145,7 @@ fn main_fs(in: Varyings) -> [[location(0)]] vec4<f32> {
     // material roughness by squaring the perceptual roughness
     let alpha_roughness = perceptual_roughness * perceptual_roughness;
 
-    var color = locals.emissive_factor.xyz;
+    var color = vec3<f32>(0.0);
     let num_lights = min(MAX_LIGHTS, arrayLength(&lights.data));
     for (var i = 0u; i<num_lights; i = i + 1u) {
         let light = lights.data[i];

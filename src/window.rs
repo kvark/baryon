@@ -171,13 +171,14 @@ impl WindowBuilder {
 
     pub fn build(self) -> Window {
         let event_loop = winit::event_loop::EventLoop::new();
-        let mut builder = winit::window::WindowBuilder::new();
+        let mut builder = winit::window::WindowBuilder::new()
+            .with_min_inner_size(winit::dpi::Size::Logical((64, 64).into()));
         if let Some(title) = self.title {
             builder = builder.with_title(title);
         }
         if let Some(size) = self.size {
             builder = builder
-                .with_inner_size(winit::dpi::Size::Physical((size.width, size.height).into()));
+                .with_inner_size(winit::dpi::Size::Logical((size.width, size.height).into()));
         }
         let raw = builder.build(&event_loop).unwrap();
         Window { raw, event_loop }

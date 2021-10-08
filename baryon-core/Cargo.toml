@@ -16,7 +16,7 @@ bytemuck = "1.4"
 hecs = "0.5"
 mint = "0.5"
 raw-window-handle = "0.3"
-wgpu = "0.10"
+wgpu = "0.11"
 # private
 ddsfile = "0.4"
 glam = { version = "0.18", features = ["mint"] }

@@ -44,8 +44,7 @@ impl BufferPool {
             chunk_size,
             last_index: 0,
             last_offset: 0,
-            //alignment: device.limits().min_uniform_buffer_offset_alignment,
-            alignment: wgpu::BIND_BUFFER_ALIGNMENT as u32,
+            alignment: device.limits().min_uniform_buffer_offset_alignment,
             usage,
         }
     }

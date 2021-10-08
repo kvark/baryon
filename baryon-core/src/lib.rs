@@ -87,6 +87,7 @@ pub struct Context {
 #[derive(Default, Debug)]
 pub struct ContextBuilder {
     power_preference: wgpu::PowerPreference,
+    software: bool,
 }
 
 impl ContextBuilder {
@@ -101,11 +102,16 @@ impl ContextBuilder {
         }
     }
 
+    pub fn software(self, software: bool) -> Self {
+        Self { software, ..self }
+    }
+
     pub async fn build_offscreen(self) -> Context {
         let instance = wgpu::Instance::new(wgpu::Backends::PRIMARY);
         let adapter = instance
             .request_adapter(&wgpu::RequestAdapterOptions {
                 power_preference: self.power_preference,
+                force_fallback_adapter: self.software,
                 compatible_surface: None,
             })
             .await
@@ -146,6 +152,7 @@ impl ContextBuilder {
         let adapter = instance
             .request_adapter(&wgpu::RequestAdapterOptions {
                 power_preference: self.power_preference,
+                force_fallback_adapter: self.software,
                 compatible_surface: Some(&surface.raw),
             })
             .await
@@ -192,9 +199,8 @@ impl Context {
 
     pub fn present<P: Pass>(&mut self, pass: &mut P, scene: &Scene, camera: &Camera) {
         let surface = self.surface.as_mut().expect("No screen is configured!");
-        let frame = surface.raw.get_current_frame().unwrap();
+        let frame = surface.raw.get_current_texture().unwrap();
         let view = frame
-            .output
             .texture
             .create_view(&wgpu::TextureViewDescriptor::default());
 
@@ -212,6 +218,7 @@ impl Context {
         pass.draw(&[tr], scene, camera, self);
 
         self.targets.pop();
+        frame.present();
     }
 
     pub fn add_mesh(&mut self) -> MeshBuilder {

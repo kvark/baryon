@@ -46,6 +46,8 @@ pub enum Key {
 pub enum Event {
     Resize { width: u32, height: u32 },
     Keyboard { key: Key, pressed: bool },
+    Pointer { position: [f32;2] },
+    Scroll { delta: [f32;2] },
     Draw,
     Exit,
 }
@@ -59,7 +61,7 @@ impl Window {
         use std::time;
         use winit::{
             event::{
-                ElementState, Event as WinEvent, KeyboardInput, VirtualKeyCode as Vkc, WindowEvent,
+                ElementState, Event as WinEvent, KeyboardInput, MouseScrollDelta, VirtualKeyCode as Vkc, WindowEvent,
             },
             event_loop::ControlFlow,
         };
@@ -118,6 +120,27 @@ impl Window {
                         },
                         pressed: state == ElementState::Pressed,
                     });
+                    ControlFlow::Poll
+                }
+                WinEvent::WindowEvent {
+                    event: WindowEvent::CursorMoved { position, .. },
+                    ..
+                } => {
+                    runner(Event::Pointer{position: [position.x as f32, position.y as f32]});
+                    ControlFlow::Poll
+                }
+                WinEvent::WindowEvent {
+                    event: WindowEvent::MouseWheel { delta, .. },
+                    ..
+                } => {
+                    match delta {
+                      MouseScrollDelta::LineDelta(x, y)=>{
+                          runner(Event::Scroll{delta: [x, y]});
+                      },
+                      MouseScrollDelta::PixelDelta(position)=>{
+                        runner(Event::Scroll{delta: [position.x as f32, position.y as f32]});
+                      }
+                    }
                     ControlFlow::Poll
                 }
                 WinEvent::RedrawRequested(_) => {

@@ -46,8 +46,8 @@ pub enum Key {
 pub enum Event {
     Resize { width: u32, height: u32 },
     Keyboard { key: Key, pressed: bool },
-    Pointer { position: [f32;2] },
-    Scroll { delta: [f32;2] },
+    Pointer { position: mint::Vector2<f32> },
+    Scroll { delta: mint::Vector2<f32> },
     Draw,
     Exit,
 }
@@ -126,7 +126,7 @@ impl Window {
                     event: WindowEvent::CursorMoved { position, .. },
                     ..
                 } => {
-                    runner(Event::Pointer{position: [position.x as f32, position.y as f32]});
+                    runner(Event::Pointer { position: mint::Vector2 { x: position.x as f32, y: position.y as f32 } });
                     ControlFlow::Poll
                 }
                 WinEvent::WindowEvent {
@@ -135,10 +135,10 @@ impl Window {
                 } => {
                     match delta {
                       MouseScrollDelta::LineDelta(x, y)=>{
-                          runner(Event::Scroll{delta: [x, y]});
+                          runner(Event::Scroll { delta: mint::Vector2 { x, y } });
                       },
                       MouseScrollDelta::PixelDelta(position)=>{
-                        runner(Event::Scroll{delta: [position.x as f32, position.y as f32]});
+                          runner(Event::Scroll { delta: mint::Vector2 { x: position.x as f32, y: position.y as f32 } });
                       }
                     }
                     ControlFlow::Poll

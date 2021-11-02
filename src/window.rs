@@ -43,9 +43,20 @@ pub enum Key {
     Other,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Button {
+    Left,
+    Middle,
+    Right,
+    Other(u16),
+}
+
 pub enum Event {
     Resize { width: u32, height: u32 },
     Keyboard { key: Key, pressed: bool },
+    Pointer { position: mint::Vector2<f32> },
+    Scroll { delta: mint::Vector2<f32> },
+    Click { button: Button, pressed: bool },
     Draw,
     Exit,
 }
@@ -59,7 +70,7 @@ impl Window {
         use std::time;
         use winit::{
             event::{
-                ElementState, Event as WinEvent, KeyboardInput, VirtualKeyCode as Vkc, WindowEvent,
+                ElementState, Event as WinEvent, KeyboardInput, MouseScrollDelta, MouseButton, VirtualKeyCode as Vkc, WindowEvent,
             },
             event_loop::ControlFlow,
         };
@@ -111,13 +122,49 @@ impl Window {
                                 Vkc::Space => Key::Space,
                                 Vkc::Escape => Key::Escape,
                                 _ => {
-                                    log::debug!("Urecognized key {:?}", code);
+                                    log::debug!("Unrecognized key {:?}", code);
                                     Key::Other
                                 }
                             }
                         },
                         pressed: state == ElementState::Pressed,
                     });
+                    ControlFlow::Poll
+                }
+                WinEvent::WindowEvent {
+                    event: WindowEvent::CursorMoved { position, .. },
+                    ..
+                } => {
+                    runner(Event::Pointer { position: mint::Vector2 { x: position.x as f32, y: position.y as f32 } });
+                    ControlFlow::Poll
+                }
+                WinEvent::WindowEvent {
+                    event: WindowEvent::MouseInput { button, state, .. },
+                    ..
+                } => {
+                    runner(Event::Click {
+                        button: match button {
+                            MouseButton::Left => Button::Left,
+                            MouseButton::Middle => Button::Middle,
+                            MouseButton::Right => Button::Right,
+                            MouseButton::Other(code) => Button::Other(code)
+                        },
+                        pressed: state == ElementState::Pressed
+                    });
+                    ControlFlow::Poll
+                }
+                WinEvent::WindowEvent {
+                    event: WindowEvent::MouseWheel { delta, .. },
+                    ..
+                } => {
+                    match delta {
+                      MouseScrollDelta::LineDelta(x, y)=>{
+                          runner(Event::Scroll { delta: mint::Vector2 { x, y } });
+                      },
+                      MouseScrollDelta::PixelDelta(position)=>{
+                          runner(Event::Scroll { delta: mint::Vector2 { x: position.x as f32, y: position.y as f32 } });
+                      }
+                    }
                     ControlFlow::Poll
                 }
                 WinEvent::RedrawRequested(_) => {

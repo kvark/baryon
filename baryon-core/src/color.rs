@@ -7,9 +7,9 @@ const GAMMA: f32 = 2.2;
 impl Color {
     pub const BLACK_TRANSPARENT: Self = Self(0x0);
     pub const BLACK_OPAQUE: Self = Self(0xFF000000);
-    pub const RED: Self = Self(0xFF0000FF);
+    pub const RED: Self = Self(0xFFFF0000);
     pub const GREEN: Self = Self(0xFF00FF00);
-    pub const BLUE: Self = Self(0xFFFF0000);
+    pub const BLUE: Self = Self(0xFF0000FF);
 
     fn import(value: f32) -> u32 {
         (value.clamp(0.0, 1.0) * 255.0) as u32

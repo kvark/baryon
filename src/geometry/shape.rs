@@ -35,14 +35,6 @@ impl super::Geometry {
 
         let radius = bounding_radius(path);
 
-        // The tessellated geometry is ready to be uploaded to the GPU.
-        println!(
-            " -- {} vertices {} indices {} radius",
-            buffer.vertices.len(),
-            buffer.indices.len(),
-            radius
-        );
-
         Self {
             positions: buffer.vertices,
             indices: Some(buffer.indices),

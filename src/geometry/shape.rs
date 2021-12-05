@@ -1,20 +1,6 @@
 use lyon::path::Path;
 use lyon::tessellation::*;
 
-// TODO is this always correct?
-fn bounding_radius(path: Path) -> f32 {
-    path.iter().fold(0.0, |accum, item| {
-        let p = item.from();
-        if p.x > accum {
-          p.x
-        } else if p.y > accum {
-            p.y
-        } else {
-            accum
-        }
-    })
-}
-
 type PositionBuilder = VertexBuffers<crate::Position, u16>;
 
 fn fill_position(vertex: FillVertex)->crate::Position {
@@ -25,6 +11,13 @@ fn fill_position(vertex: FillVertex)->crate::Position {
 fn stroke_position(vertex: StrokeVertex)->crate::Position {
     let p = vertex.position();
     crate::Position([p.x, p.y, 0.0])
+}
+
+fn bounding_radius(path: &Path) -> f32 {
+  path.iter().fold(0.0, |accum, item| {
+    let p = item.from();
+    accum.max(p.x.abs().max(p.y.abs()))
+  })
 }
 
 impl super::Geometry {

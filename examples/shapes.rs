@@ -1,9 +1,9 @@
 // https://nical.github.io/posts/lyon-intro.html
 
 use baryon::{
-    geometry::{Geometry, Streams},
+    geometry::{Geometry},
     window::{Event, Window},
-    pass, Camera, Color,
+    pass, Camera, Color, Projection,
 };
 use lyon::{algorithms::aabb::bounding_rect, math::point, path::Path, tessellation::StrokeOptions};
 
@@ -38,8 +38,8 @@ fn main() {
         .component(Color::RED)
         .position(pos).build();
 
-    let camera = baryon::Camera {
-        projection: baryon::Projection::Perspective { fov_y: 70.0 },
+    let camera = Camera {
+        projection: Projection::Perspective { fov_y: 70.0 },
         depth: 1.0..100.0,
         node: scene
             .add_node()

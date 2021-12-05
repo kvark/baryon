@@ -23,7 +23,7 @@ fn bounding_radius(path: &Path) -> f32 {
 impl super::Geometry {
     pub fn fill(path: &Path) -> Self {
         let mut buffer = PositionBuilder::new();
-        let mut builder = &mut BuffersBuilder::new(&mut buffer, fill_position);
+        let builder = &mut BuffersBuilder::new(&mut buffer, fill_position);
         let mut tessellator = FillTessellator::new();
         {
             tessellator.tessellate_path(path, &FillOptions::default(), builder).unwrap();
@@ -41,7 +41,7 @@ impl super::Geometry {
 
     pub fn stroke(path: &Path, options:&StrokeOptions) -> Self {
         let mut buffer = PositionBuilder::new();
-        let mut builder = &mut BuffersBuilder::new(&mut buffer, stroke_position);
+        let builder = &mut BuffersBuilder::new(&mut buffer, stroke_position);
         let mut tessellator = StrokeTessellator::new();
         {
             tessellator.tessellate_path(path, options, builder).unwrap();

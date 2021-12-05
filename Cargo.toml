@@ -19,6 +19,7 @@ members = ["baryon-core"]
 [features]
 default = ["window"]
 window = ["raw-window-handle", "winit"]
+shape = ["lyon"]
 # obj, gltf
 # pass = glam, fxhash, mint, wgpu
 # factory =
@@ -30,6 +31,10 @@ required-features = ["obj"]
 [[example]]
 name = "load-gltf"
 required-features = ["gltf"]
+
+[[example]]
+name = "shapes"
+required-features = ["shape"]
 
 [dependencies.bc]
 package = "baryon-core"
@@ -50,6 +55,7 @@ obj = { version = "0.10", optional = true }
 raw-window-handle = { version = "0.3", optional = true }
 winit = { version = "0.25", optional = true }
 wgpu = "0.11"
+lyon = { version = "0.17", optional = true }
 
 [dev-dependencies]
 naga = { version = "0.6", features = ["wgsl-in"] }

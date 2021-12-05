@@ -1,4 +1,6 @@
 pub mod cuboid;
+#[cfg(feature = "shape")]
+pub mod shape;
 pub mod sphere;
 
 bitflags::bitflags!(

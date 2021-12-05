@@ -15,22 +15,25 @@ fn bounding_radius(path: Path) -> f32 {
     })
 }
 
+type PositionBuilder = VertexBuffers<crate::Position, u16>;
+
+fn fill_position(vertex: FillVertex)->crate::Position {
+    let p = vertex.position();
+    crate::Position([p.x, p.y, 0.0])
+}
+
+fn stroke_position(vertex: StrokeVertex)->crate::Position {
+    let p = vertex.position();
+    crate::Position([p.x, p.y, 0.0])
+}
+
 impl super::Geometry {
-    pub fn shape(_streams: super::Streams, path: Path) -> Self {
-        let mut buffer: VertexBuffers<crate::Position, u16> = VertexBuffers::new();
+    pub fn fill(_streams: super::Streams, path: Path) -> Self {
+        let mut buffer = PositionBuilder::new();
+        let mut builder = &mut BuffersBuilder::new(&mut buffer, fill_position);
         let mut tessellator = FillTessellator::new();
         {
-            // Compute the tessellation.
-            tessellator
-                .tessellate_path(
-                    &path,
-                    &FillOptions::default(),
-                    &mut BuffersBuilder::new(&mut buffer, |vertex: FillVertex| {
-                        let p = vertex.position();
-                        crate::Position([p.x, p.y, 0.0])
-                    }),
-                )
-                .unwrap();
+            tessellator.tessellate_path(&path, &FillOptions::default(), builder).unwrap();
         }
 
         let radius = bounding_radius(path);
@@ -42,4 +45,23 @@ impl super::Geometry {
             radius,
         }
     }
+
+  pub fn stroke(path: Path) -> Self {
+    let mut buffer = PositionBuilder::new();
+    let mut builder = &mut BuffersBuilder::new(&mut buffer, stroke_position);
+    let mut tessellator = StrokeTessellator::new();
+    let options = &StrokeOptions::default();
+    {
+        tessellator.tessellate_path(&path, options, builder).unwrap();
+    }
+
+    let radius = bounding_radius(path) + options.line_width;
+
+    Self {
+      positions: buffer.vertices,
+      indices: Some(buffer.indices),
+      normals: None,
+      radius,
+    }
+  }
 }

@@ -8,7 +8,7 @@ use baryon::{
 use lyon::{algorithms::aabb::bounding_rect, math::point, path::Path};
 
 fn main() {
-    let window = Window::new().title("Shape").build();
+    let window = Window::new().title("Shapes").build();
     let mut context = pollster::block_on(baryon::Context::init().build(&window));
     let mut scene = baryon::Scene::new();
 
@@ -24,7 +24,7 @@ fn main() {
     builder.end(true);
     let path = builder.build();
     let bbox = bounding_rect(path.iter());
-    let shape_prototype = Geometry::shape(Streams::empty(), path).bake(&mut context);
+    let shape_prototype = Geometry::fill(Streams::empty(), path).bake(&mut context);
     scene
         .add_entity(&shape_prototype)
         .component(Color::RED)

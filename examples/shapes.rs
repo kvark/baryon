@@ -5,7 +5,7 @@ use baryon::{
     window::{Event, Window},
     pass, Camera, Color,
 };
-use lyon::{algorithms::aabb::bounding_rect, math::point, path::Path};
+use lyon::{algorithms::aabb::bounding_rect, math::point, path::Path, tessellation::StrokeOptions};
 
 fn main() {
     let window = Window::new().title("Shapes").build();
@@ -24,16 +24,19 @@ fn main() {
     builder.end(true);
     let path = builder.build();
     let bbox = bounding_rect(path.iter());
-    let shape_prototype = Geometry::fill(Streams::empty(), path).bake(&mut context);
+    let pos = mint::Vector3 {
+        x: bbox.size.width / -4.0,
+        y: bbox.size.height / -2.0,
+        z: 0.0,
+    };
     scene
-        .add_entity(&shape_prototype)
+        .add_entity(&Geometry::stroke(&path, &StrokeOptions::default()).bake(&mut context))
+        .component(Color::from_rgba([1.0, 1.0, 1.0, 1.0]))
+        .position(pos).build();
+    scene
+        .add_entity(&Geometry::fill(&path).bake(&mut context))
         .component(Color::RED)
-        .position(mint::Vector3 {
-            x: bbox.size.width / -4.0,
-            y: bbox.size.height / -2.0,
-            z: 0.0,
-        })
-        .build();
+        .position(pos).build();
 
     let camera = baryon::Camera {
         projection: baryon::Projection::Perspective { fov_y: 70.0 },
@@ -43,7 +46,7 @@ fn main() {
             .position([0.0f32, 0.0, -30.0].into())
             .look_at([0f32; 3].into(), [0f32, -1.0, 0.0].into())
             .build(),
-        background: baryon::Color(0xFF203040),
+        background: baryon::Color::BLACK_OPAQUE,
     };
 
     let mut pass = pass::Solid::new(

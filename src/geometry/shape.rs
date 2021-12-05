@@ -14,10 +14,10 @@ fn stroke_position(vertex: StrokeVertex)->crate::Position {
 }
 
 fn bounding_radius(path: &Path) -> f32 {
-  path.iter().fold(0.0, |accum, item| {
-    let p = item.from();
-    accum.max(p.x.abs().max(p.y.abs()))
-  })
+    path.iter().fold(0.0, |accum, item| {
+        let p = item.from();
+        accum.max(p.x.abs().max(p.y.abs()))
+    })
 }
 
 impl super::Geometry {
@@ -39,21 +39,21 @@ impl super::Geometry {
         }
     }
 
-  pub fn stroke(path: &Path, options:&StrokeOptions) -> Self {
-    let mut buffer = PositionBuilder::new();
-    let mut builder = &mut BuffersBuilder::new(&mut buffer, stroke_position);
-    let mut tessellator = StrokeTessellator::new();
-    {
-        tessellator.tessellate_path(path, options, builder).unwrap();
-    }
+    pub fn stroke(path: &Path, options:&StrokeOptions) -> Self {
+        let mut buffer = PositionBuilder::new();
+        let mut builder = &mut BuffersBuilder::new(&mut buffer, stroke_position);
+        let mut tessellator = StrokeTessellator::new();
+        {
+            tessellator.tessellate_path(path, options, builder).unwrap();
+        }
 
-    let radius = bounding_radius(path);
+        let radius = bounding_radius(path);
 
-    Self {
-      positions: buffer.vertices,
-      indices: Some(buffer.indices),
-      normals: None,
-      radius,
+        Self {
+            positions: buffer.vertices,
+            indices: Some(buffer.indices),
+            normals: None,
+            radius,
+          }
     }
-  }
 }

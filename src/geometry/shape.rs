@@ -1,37 +1,31 @@
 use lyon::path::Path;
 use lyon::tessellation::*;
 
-// TODO is this always correct?
-fn bounding_radius(path: Path) -> f32 {
+type PositionBuilder = VertexBuffers<crate::Position, u16>;
+
+fn fill_position(vertex: FillVertex) -> crate::Position {
+    let p = vertex.position();
+    crate::Position([p.x, p.y, 0.0])
+}
+
+fn stroke_position(vertex: StrokeVertex) -> crate::Position {
+    let p = vertex.position();
+    crate::Position([p.x, p.y, 0.0])
+}
+
+fn bounding_radius(path: &Path) -> f32 {
     path.iter().fold(0.0, |accum, item| {
         let p = item.from();
-        if p.x > accum {
-          p.x
-        } else if p.y > accum {
-            p.y
-        } else {
-            accum
-        }
+        accum.max(p.x.abs().max(p.y.abs()))
     })
 }
 
 impl super::Geometry {
-    pub fn shape(_streams: super::Streams, path: Path) -> Self {
-        let mut buffer: VertexBuffers<crate::Position, u16> = VertexBuffers::new();
+    pub fn fill(path: &Path) -> Self {
+        let mut buffer = PositionBuilder::new();
+        let builder = &mut BuffersBuilder::new(&mut buffer, fill_position);
         let mut tessellator = FillTessellator::new();
-        {
-            // Compute the tessellation.
-            tessellator
-                .tessellate_path(
-                    &path,
-                    &FillOptions::default(),
-                    &mut BuffersBuilder::new(&mut buffer, |vertex: FillVertex| {
-                        let p = vertex.position();
-                        crate::Position([p.x, p.y, 0.0])
-                    }),
-                )
-                .unwrap();
-        }
+        tessellator.tessellate_path(path, &FillOptions::default(), builder).unwrap();
 
         let radius = bounding_radius(path);
 
@@ -41,5 +35,21 @@ impl super::Geometry {
             normals: None,
             radius,
         }
+    }
+
+    pub fn stroke(path: &Path, options:&StrokeOptions) -> Self {
+        let mut buffer = PositionBuilder::new();
+        let builder = &mut BuffersBuilder::new(&mut buffer, stroke_position);
+        let mut tessellator = StrokeTessellator::new();
+        tessellator.tessellate_path(path, options, builder).unwrap();
+
+        let radius = bounding_radius(path);
+
+        Self {
+            positions: buffer.vertices,
+            indices: Some(buffer.indices),
+            normals: None,
+            radius,
+          }
     }
 }

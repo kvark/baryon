@@ -3,12 +3,12 @@ use lyon::tessellation::*;
 
 type PositionBuilder = VertexBuffers<crate::Position, u16>;
 
-fn fill_position(vertex: FillVertex)->crate::Position {
+fn fill_position(vertex: FillVertex) -> crate::Position {
     let p = vertex.position();
     crate::Position([p.x, p.y, 0.0])
 }
 
-fn stroke_position(vertex: StrokeVertex)->crate::Position {
+fn stroke_position(vertex: StrokeVertex) -> crate::Position {
     let p = vertex.position();
     crate::Position([p.x, p.y, 0.0])
 }
@@ -25,9 +25,7 @@ impl super::Geometry {
         let mut buffer = PositionBuilder::new();
         let builder = &mut BuffersBuilder::new(&mut buffer, fill_position);
         let mut tessellator = FillTessellator::new();
-        {
-            tessellator.tessellate_path(path, &FillOptions::default(), builder).unwrap();
-        }
+        tessellator.tessellate_path(path, &FillOptions::default(), builder).unwrap();
 
         let radius = bounding_radius(path);
 
@@ -43,9 +41,7 @@ impl super::Geometry {
         let mut buffer = PositionBuilder::new();
         let builder = &mut BuffersBuilder::new(&mut buffer, stroke_position);
         let mut tessellator = StrokeTessellator::new();
-        {
-            tessellator.tessellate_path(path, options, builder).unwrap();
-        }
+        tessellator.tessellate_path(path, options, builder).unwrap();
 
         let radius = bounding_radius(path);
 

@@ -60,6 +60,7 @@ impl Target {
 pub struct TargetInfo {
     pub format: wgpu::TextureFormat,
     pub sample_count: u32,
+    pub aspect_ratio: f32,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -68,6 +69,10 @@ pub struct TargetRef(u8);
 pub struct Image {
     pub view: wgpu::TextureView,
     pub size: wgpu::Extent3d,
+}
+
+pub struct ImageInfo {
+    pub size: mint::Vector2<i16>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
@@ -229,7 +234,15 @@ impl Context {
         self.surface.as_ref().map(|s| TargetInfo {
             format: s.config.format,
             sample_count: 1,
+            aspect_ratio: s.config.width as f32 / s.config.height as f32,
         })
+    }
+
+    pub fn get_image_info(&self, image_ref: ImageRef) -> ImageInfo {
+        let image = &self.images[image_ref.0 as usize];
+        ImageInfo {
+            size: [image.size.width as i16, image.size.height as i16].into(),
+        }
     }
 }
 
@@ -281,35 +294,45 @@ pub struct Node {
 
 pub type EntityRef = hecs::Entity;
 
+pub struct Array<T>(Vec<T>);
+
 pub struct Scene {
     pub world: hecs::World,
-    nodes: Vec<Node>,
-    lights: Vec<Light>,
+    pub nodes: Array<Node>,
+    pub lights: Array<Light>,
 }
 
+impl ops::Index<NodeRef> for Array<Node> {
+    type Output = Node;
+    fn index(&self, node: NodeRef) -> &Node {
+        &self.0[node.0 as usize]
+    }
+}
+impl ops::IndexMut<NodeRef> for Array<Node> {
+    fn index_mut(&mut self, node: NodeRef) -> &mut Node {
+        &mut self.0[node.0 as usize]
+    }
+}
 impl ops::Index<NodeRef> for Scene {
     type Output = Node;
     fn index(&self, node: NodeRef) -> &Node {
-        &self.nodes[node.0 as usize]
+        &self.nodes.0[node.0 as usize]
     }
 }
-
 impl ops::IndexMut<NodeRef> for Scene {
     fn index_mut(&mut self, node: NodeRef) -> &mut Node {
-        &mut self.nodes[node.0 as usize]
+        &mut self.nodes.0[node.0 as usize]
     }
 }
-
-impl ops::Index<LightRef> for Scene {
+impl ops::Index<LightRef> for Array<Light> {
     type Output = Light;
     fn index(&self, light: LightRef) -> &Light {
-        &self.lights[light.0 as usize]
+        &self.0[light.0 as usize]
     }
 }
-
-impl ops::IndexMut<LightRef> for Scene {
+impl ops::IndexMut<LightRef> for Array<Light> {
     fn index_mut(&mut self, light: LightRef) -> &mut Light {
-        &mut self.lights[light.0 as usize]
+        &mut self.0[light.0 as usize]
     }
 }
 
@@ -345,14 +368,14 @@ impl Scene {
     pub fn new() -> Self {
         Self {
             world: Default::default(),
-            nodes: vec![Node::default()],
-            lights: Vec::new(),
+            nodes: Array(vec![Node::default()]),
+            lights: Array(Vec::new()),
         }
     }
 
     fn add_node_impl(&mut self, node: &mut Node) -> NodeRef {
-        let index = self.nodes.len();
-        self.nodes.push(mem::take(node));
+        let index = self.nodes.0.len();
+        self.nodes.0.push(mem::take(node));
         NodeRef(index as u32)
     }
 
@@ -412,14 +435,15 @@ impl Scene {
 
     pub fn lights<'a>(&'a self) -> impl Iterator<Item = (LightRef, &'a Light)> {
         self.lights
+            .0
             .iter()
             .enumerate()
             .map(|(i, light)| (LightRef(i as u32), light))
     }
 
     pub fn bake(&self) -> BakedScene {
-        let mut spaces: Vec<RawSpace> = Vec::with_capacity(self.nodes.len());
-        for n in self.nodes.iter() {
+        let mut spaces: Vec<RawSpace> = Vec::with_capacity(self.nodes.0.len());
+        for n in self.nodes.0.iter() {
             let space = if n.parent == NodeRef::default() {
                 n.local.clone()
             } else {
@@ -516,6 +540,12 @@ impl ObjectBuilder<'_, SpriteBuilder> {
         self
     }
 
+    /// Register additional data for this sprite.
+    pub fn component<T: hecs::Component>(&mut self, component: T) -> &mut Self {
+        self.kind.raw.add(component);
+        self
+    }
+
     pub fn build(&mut self) -> EntityRef {
         let sprite = Sprite {
             node: if self.node.local == space::Space::default() {
@@ -553,8 +583,8 @@ impl ObjectBuilder<'_, LightBuilder> {
             intensity: self.kind.intensity,
             kind: self.kind.kind,
         };
-        let index = self.scene.lights.len();
-        self.scene.lights.push(light);
+        let index = self.scene.lights.0.len();
+        self.scene.lights.0.push(light);
         LightRef(index as u32)
     }
 }

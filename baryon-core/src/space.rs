@@ -96,6 +96,12 @@ impl<T> super::ObjectBuilder<'_, T> {
 }
 
 impl super::Node {
+    pub fn get_position(&self) -> mint::Vector3<f32> {
+        self.local.position.into()
+    }
+    pub fn set_position(&mut self, pos: mint::Vector3<f32>) {
+        self.local.position = pos.into();
+    }
     pub fn pre_move(&mut self, offset: mint::Vector3<f32>) {
         let other = Space {
             position: offset.into(),
@@ -106,6 +112,15 @@ impl super::Node {
     }
     pub fn post_move(&mut self, offset: mint::Vector3<f32>) {
         self.local.position += glam::Vec3::from(offset);
+    }
+
+    pub fn get_rotation(&self) -> (mint::Vector3<f32>, f32) {
+        let (axis, angle) = self.local.orientation.to_axis_angle();
+        (axis.into(), angle * RADIANS_TO_DEGREES)
+    }
+    pub fn set_rotation(&mut self, axis: mint::Vector3<f32>, angle_deg: f32) {
+        self.local.orientation =
+            glam::Quat::from_axis_angle(axis.into(), angle_deg * DEGREES_TO_RADIANS);
     }
     pub fn pre_rotate(&mut self, axis: mint::Vector3<f32>, angle_deg: f32) {
         self.local.orientation = self.local.orientation
@@ -118,6 +133,13 @@ impl super::Node {
             orientation: glam::Quat::from_axis_angle(axis.into(), angle_deg * DEGREES_TO_RADIANS),
         };
         self.local = other.combine(&self.local);
+    }
+
+    pub fn get_scale(&self) -> f32 {
+        self.local.scale
+    }
+    pub fn set_scale(&mut self, scale: f32) {
+        self.local.scale = scale;
     }
 }
 
@@ -191,6 +213,7 @@ impl Default for Camera {
 }
 
 const DEGREES_TO_RADIANS: f32 = std::f32::consts::PI / 180.0;
+const RADIANS_TO_DEGREES: f32 = 180.0 / std::f32::consts::PI;
 
 impl Camera {
     pub fn projection_matrix(&self, aspect: f32) -> mint::ColumnMatrix4<f32> {

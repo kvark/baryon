@@ -70,7 +70,8 @@ impl Window {
         use std::time;
         use winit::{
             event::{
-                ElementState, Event as WinEvent, KeyboardInput, MouseScrollDelta, MouseButton, VirtualKeyCode as Vkc, WindowEvent,
+                ElementState, Event as WinEvent, KeyboardInput, MouseButton, MouseScrollDelta,
+                VirtualKeyCode as Vkc, WindowEvent,
             },
             event_loop::ControlFlow,
         };
@@ -135,7 +136,12 @@ impl Window {
                     event: WindowEvent::CursorMoved { position, .. },
                     ..
                 } => {
-                    runner(Event::Pointer { position: mint::Vector2 { x: position.x as f32, y: position.y as f32 } });
+                    runner(Event::Pointer {
+                        position: mint::Vector2 {
+                            x: position.x as f32,
+                            y: position.y as f32,
+                        },
+                    });
                     ControlFlow::Poll
                 }
                 WinEvent::WindowEvent {
@@ -147,9 +153,9 @@ impl Window {
                             MouseButton::Left => Button::Left,
                             MouseButton::Middle => Button::Middle,
                             MouseButton::Right => Button::Right,
-                            MouseButton::Other(code) => Button::Other(code)
+                            MouseButton::Other(code) => Button::Other(code),
                         },
-                        pressed: state == ElementState::Pressed
+                        pressed: state == ElementState::Pressed,
                     });
                     ControlFlow::Poll
                 }
@@ -158,12 +164,19 @@ impl Window {
                     ..
                 } => {
                     match delta {
-                      MouseScrollDelta::LineDelta(x, y)=>{
-                          runner(Event::Scroll { delta: mint::Vector2 { x, y } });
-                      },
-                      MouseScrollDelta::PixelDelta(position)=>{
-                          runner(Event::Scroll { delta: mint::Vector2 { x: position.x as f32, y: position.y as f32 } });
-                      }
+                        MouseScrollDelta::LineDelta(x, y) => {
+                            runner(Event::Scroll {
+                                delta: mint::Vector2 { x, y },
+                            });
+                        }
+                        MouseScrollDelta::PixelDelta(position) => {
+                            runner(Event::Scroll {
+                                delta: mint::Vector2 {
+                                    x: position.x as f32,
+                                    y: position.y as f32,
+                                },
+                            });
+                        }
                     }
                     ControlFlow::Poll
                 }

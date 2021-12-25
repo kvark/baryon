@@ -1,9 +1,10 @@
 // https://nical.github.io/posts/lyon-intro.html
 
 use baryon::{
-    geometry::{Geometry},
+    geometry::Geometry,
+    pass,
     window::{Event, Window},
-    pass, Camera, Color, Projection,
+    Camera, Color, Projection,
 };
 use lyon::{algorithms::aabb::bounding_rect, math::point, path::Path, tessellation::StrokeOptions};
 
@@ -32,11 +33,13 @@ fn main() {
     scene
         .add_entity(&Geometry::stroke(&path, &StrokeOptions::default()).bake(&mut context))
         .component(Color::from_rgba([1.0, 1.0, 1.0, 1.0]))
-        .position(pos).build();
+        .position(pos)
+        .build();
     scene
         .add_entity(&Geometry::fill(&path).bake(&mut context))
         .component(Color::RED)
-        .position(pos).build();
+        .position(pos)
+        .build();
 
     let camera = Camera {
         projection: Projection::Perspective { fov_y: 70.0 },

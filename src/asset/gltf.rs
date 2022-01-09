@@ -1,4 +1,4 @@
-use std::path::Path;
+use std::{ops, path::Path};
 
 #[derive(Default)]
 struct MeshScratch {
@@ -126,13 +126,55 @@ fn load_primitive<'a>(
     }
 }
 
+#[derive(Debug)]
+struct Named<T> {
+    data: T,
+    name: Option<String>,
+}
+
+#[derive(Debug)]
+pub struct NamedVec<T>(Vec<Named<T>>);
+
+impl<T> Default for NamedVec<T> {
+    fn default() -> Self {
+        Self(Vec::new())
+    }
+}
+
+impl<T> ops::Index<usize> for NamedVec<T> {
+    type Output = T;
+    fn index(&self, index: usize) -> &T {
+        &self.0[index].data
+    }
+}
+
+impl<T> NamedVec<T> {
+    pub fn iter(&self) -> impl Iterator<Item = &T> {
+        self.0.iter().map(|elem| &elem.data)
+    }
+
+    pub fn find(&self, name: &str) -> Option<&T> {
+        self.0
+            .iter()
+            .find(|elem| elem.name.as_deref() == Some(name))
+            .map(|elem| &elem.data)
+    }
+}
+
+#[derive(Default)]
+pub struct Module {
+    pub entities: NamedVec<bc::EntityRef>,
+    pub cameras: NamedVec<bc::Camera>,
+}
+
 /// Load mesh from glTF 2.0 format.
 pub fn load_gltf(
     path: impl AsRef<Path>,
     scene: &mut crate::Scene,
     parent: crate::NodeRef,
     context: &mut crate::Context,
-) {
+) -> Module {
+    let mut module = Module::default();
     let (gltf, buffers, images) = gltf::import(path).expect("invalid glTF 2.0");
 
     let mut textures = Vec::with_capacity(images.len());
@@ -165,6 +207,7 @@ pub fn load_gltf(
         };
         gltf.nodes().len()
     ];
+
     for gltf_node in gltf.nodes() {
         let (translation, rotation, scale) = gltf_node.transform().decomposed();
         let uniform_scale = if scale[1] != scale[0] || scale[2] != scale[0] {
@@ -177,6 +220,7 @@ pub fn load_gltf(
         } else {
             scale[0]
         };
+        log::debug!("Node {:?}", gltf_node.name());
 
         let cur = &mut nodes[gltf_node.index()];
         let node = scene
@@ -193,15 +237,57 @@ pub fn load_gltf(
         }
 
         if let Some(gltf_mesh) = gltf_node.mesh() {
+            log::debug!("Mesh {:?}", gltf_mesh.name());
             for primitive in prototypes[gltf_mesh.index()].iter() {
-                let _entity = scene
+                let entity = scene
                     .add_entity(&primitive.prototype)
                     .parent(node)
                     .component(primitive.color)
                     .component(primitive.shader)
                     .component(primitive.material)
                     .build();
+                module.entities.0.push(Named {
+                    data: entity,
+                    name: gltf_mesh.name().map(str::to_string),
+                });
             }
         }
+
+        if let Some(gltf_camera) = gltf_node.camera() {
+            let (depth, projection) = match gltf_camera.projection() {
+                gltf::camera::Projection::Orthographic(p) => (
+                    p.znear()..p.zfar(),
+                    bc::Projection::Orthographic {
+                        center: [0.0; 2].into(),
+                        //Note: p.xmag() is ignored
+                        extent_y: p.ymag(),
+                    },
+                ),
+                gltf::camera::Projection::Perspective(p) => (
+                    p.znear()..p.zfar().unwrap_or(f32::INFINITY),
+                    bc::Projection::Perspective {
+                        fov_y: p.yfov().to_degrees(),
+                    },
+                ),
+            };
+            log::debug!(
+                "Camera {:?} depth {:?} proj {:?} at {:?}",
+                gltf_camera.name(),
+                depth,
+                projection,
+                scene[node]
+            );
+            module.cameras.0.push(Named {
+                data: bc::Camera {
+                    projection,
+                    depth,
+                    node,
+                    background: bc::Color::default(),
+                },
+                name: gltf_camera.name().map(str::to_string),
+            });
+        }
     }
+
+    module
 }

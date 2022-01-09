@@ -13,7 +13,7 @@ default = []
 [dependencies]
 # public
 bytemuck = "1.4"
-hecs = "0.7"
+hecs = "=0.7.1"
 mint = "0.5"
 raw-window-handle = "0.3"
 wgpu = "0.11"

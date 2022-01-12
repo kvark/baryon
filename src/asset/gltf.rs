@@ -1,4 +1,4 @@
-use std::{ops, path::Path};
+use std::{collections::VecDeque, ops, path::Path};
 
 #[derive(Default)]
 struct MeshScratch {
@@ -171,7 +171,7 @@ pub struct Module {
 pub fn load_gltf(
     path: impl AsRef<Path>,
     scene: &mut crate::Scene,
-    parent: crate::NodeRef,
+    global_parent: crate::NodeRef,
     context: &mut crate::Context,
 ) -> Module {
     let mut module = Module::default();
@@ -195,20 +195,22 @@ pub fn load_gltf(
         prototypes.push(primitives);
     }
 
-    #[derive(Clone)]
-    struct TempNode {
+    struct PreNode<'a> {
+        gltf_node: gltf::Node<'a>,
         parent: crate::NodeRef,
-        node: crate::NodeRef,
     }
-    let mut nodes = vec![
-        TempNode {
-            parent,
-            node: crate::NodeRef::default()
-        };
-        gltf.nodes().len()
-    ];
 
-    for gltf_node in gltf.nodes() {
+    let mut deque = VecDeque::new();
+    for gltf_scene in gltf.scenes() {
+        deque.extend(gltf_scene.nodes().map(|gltf_node| PreNode {
+            gltf_node,
+            parent: global_parent,
+        }));
+    }
+
+    while let Some(PreNode { gltf_node, parent }) = deque.pop_front() {
+        log::debug!("Node {:?}", gltf_node.name());
+
         let (translation, rotation, scale) = gltf_node.transform().decomposed();
         let uniform_scale = if scale[1] != scale[0] || scale[2] != scale[0] {
             log::warn!(
@@ -220,20 +222,20 @@ pub fn load_gltf(
         } else {
             scale[0]
         };
-        log::debug!("Node {:?}", gltf_node.name());
 
-        let cur = &mut nodes[gltf_node.index()];
         let node = scene
             .add_node()
-            .parent(cur.parent)
+            .parent(parent)
             .position(translation.into())
             .orientation(rotation.into())
             .scale(uniform_scale)
             .build();
-        cur.node = node;
 
         for gltf_child in gltf_node.children() {
-            nodes[gltf_child.index()].parent = node;
+            deque.push_back(PreNode {
+                gltf_node: gltf_child,
+                parent: node,
+            });
         }
 
         if let Some(gltf_mesh) = gltf_node.mesh() {

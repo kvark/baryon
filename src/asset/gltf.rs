@@ -165,6 +165,7 @@ impl<T> NamedVec<T> {
 pub struct Module {
     pub entities: NamedVec<bc::EntityRef>,
     pub cameras: NamedVec<bc::Camera>,
+    pub lights: NamedVec<bc::LightRef>,
 }
 
 /// Load mesh from glTF 2.0 format.
@@ -243,10 +244,10 @@ pub fn load_gltf(
             for primitive in prototypes[gltf_mesh.index()].iter() {
                 let entity = scene
                     .add_entity(&primitive.prototype)
-                    .parent(node)
                     .component(primitive.color)
                     .component(primitive.shader)
                     .component(primitive.material)
+                    .parent(node)
                     .build();
                 module.entities.0.push(Named {
                     data: entity,
@@ -287,6 +288,28 @@ pub fn load_gltf(
                     background: bc::Color::default(),
                 },
                 name: gltf_camera.name().map(str::to_string),
+            });
+        }
+
+        if let Some(gltf_light) = gltf_node.light() {
+            use gltf::khr_lights_punctual::Kind as LightKind;
+            let kind = match gltf_light.kind() {
+                LightKind::Directional => bc::LightKind::Directional,
+                LightKind::Point => bc::LightKind::Point,
+                LightKind::Spot { .. } => {
+                    log::warn!("Spot lights are not supported: {:?}", gltf_light.name());
+                    continue;
+                }
+            };
+            let light = scene
+                .add_light(kind)
+                .intensity(gltf_light.intensity())
+                .color(crate::Color::from_rgb_alpha(gltf_light.color(), 0.0))
+                .parent(node)
+                .build();
+            module.lights.0.push(Named {
+                data: light,
+                name: gltf_light.name().map(str::to_string),
             });
         }
     }

@@ -36,6 +36,9 @@ required-features = ["gltf"]
 name = "shapes"
 required-features = ["shape"]
 
+[[example]]
+name = "scene"
+
 [dependencies.bc]
 package = "baryon-core"
 path = "baryon-core"

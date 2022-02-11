@@ -2,14 +2,12 @@ struct Vertex {
     [[location(0)]] pos: vec3<f32>;
 };
 
-[[block]]
 struct Globals {
     view_proj: mat4x4<f32>;
 };
 [[group(0), binding(0)]]
 var<uniform> globals: Globals;
 
-[[block]]
 struct Locals {
     pos_scale: vec4<f32>;
     rot: vec4<f32>;

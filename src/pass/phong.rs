@@ -224,6 +224,7 @@ impl Phong {
                         module: &shader_module,
                         entry_point: "fs_flat",
                     }),
+                    multiview: None,
                 }),
                 gouraud: d.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
                     label: Some("phong/gouraud"),
@@ -241,6 +242,7 @@ impl Phong {
                         module: &shader_module,
                         entry_point: "fs_gouraud",
                     }),
+                    multiview: None,
                 }),
                 phong: d.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
                     label: Some("phong"),
@@ -258,6 +260,7 @@ impl Phong {
                         module: &shader_module,
                         entry_point: "fs_phong",
                     }),
+                    multiview: None,
                 }),
             }
         };

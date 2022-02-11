@@ -1,11 +1,9 @@
-use mint::Vector3;
-
 fn main() {
     use baryon::{
         geometry::{Geometry, Streams},
+        pass::{Phong, PhongConfig, Shader},
         window::{Event, Window},
-        pass::{Shader, Phong, PhongConfig},
-        Color, Camera, Projection, Scene, Context
+        Camera, Color, Context, Projection, Scene,
     };
 
     let window = Window::new().title("Scene").build();
@@ -42,7 +40,9 @@ fn main() {
         .build();
 
     let mut pass = Phong::new(
-        &PhongConfig {..Default::default()},
+        &PhongConfig {
+            ..Default::default()
+        },
         &context,
     );
 

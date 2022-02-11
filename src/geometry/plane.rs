@@ -1,4 +1,4 @@
-use crate::{Position,Normal};
+use crate::{Normal, Position};
 
 impl super::Geometry {
     pub fn plane(size: f32) -> Self {

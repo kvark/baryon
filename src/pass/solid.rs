@@ -139,6 +139,7 @@ impl Solid {
                 module: &shader_module,
                 entry_point: "main_fs",
             }),
+            multiview: None,
         });
 
         Self {

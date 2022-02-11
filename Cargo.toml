@@ -50,18 +50,18 @@ mint = "0.5"
 # private
 bitflags = "1.0"
 bytemuck = { version = "1.4", features = ["derive"] }
-glam = "0.18"
-gltf = { version = "0.16", features = ["names", "utils", "KHR_lights_punctual"], optional = true }
+glam = "0.20"
+gltf = { version = "1", features = ["names", "utils", "KHR_lights_punctual"], optional = true }
 fxhash = "0.2"
 log = "0.4"
 obj = { version = "0.10", optional = true }
-raw-window-handle = { version = "0.3", optional = true }
-winit = { version = "0.25", optional = true }
-wgpu = "0.11"
+raw-window-handle = { version = "0.4", optional = true }
+winit = { version = "0.26", optional = true }
+wgpu = "0.12"
 lyon = { version = "0.17", optional = true }
 
 [dev-dependencies]
-naga = { version = "0.6", features = ["wgsl-in"] }
+naga = { version = "0.8", features = ["wgsl-in"] }
 pollster = "0.2"
 
 [package.metadata.docs.rs]

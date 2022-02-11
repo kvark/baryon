@@ -1,4 +1,3 @@
-[[block]]
 struct Globals {
     view_proj: mat4x4<f32>;
 };
@@ -8,7 +7,6 @@ var<uniform> globals: Globals;
 [[group(0), binding(1)]]
 var sam: sampler;
 
-[[block]]
 struct Locals {
     pos_scale: vec4<f32>;
     rot: vec4<f32>;

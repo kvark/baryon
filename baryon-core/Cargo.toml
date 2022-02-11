@@ -15,10 +15,10 @@ default = []
 bytemuck = "1.4"
 hecs = "=0.7.1"
 mint = "0.5"
-raw-window-handle = "0.3"
-wgpu = "0.11"
+raw-window-handle = "0.4"
+wgpu = "0.12"
 # private
-ddsfile = "0.4"
-glam = { version = "0.18", features = ["mint"] }
+ddsfile = "0.5"
+glam = { version = "0.20", features = ["mint"] }
 image = { version = "0.23", default-features = false, features = ["jpeg", "png", "bmp", "hdr", "dds"] }
 log = "0.4"

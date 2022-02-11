@@ -72,10 +72,7 @@ impl Flat {
                 wgpu::BindGroupLayoutEntry {
                     binding: 1,
                     visibility: wgpu::ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Sampler {
-                        filtering: true,
-                        comparison: false,
-                    },
+                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
                     count: None,
                 },
             ],
@@ -167,6 +164,7 @@ impl Flat {
                     module: &shader_module,
                     entry_point: "main_fs",
                 }),
+                multiview: None,
             });
 
             Pipelines { transparent }

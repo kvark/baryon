@@ -1,8 +1,8 @@
 pub mod cuboid;
+pub mod plane;
 #[cfg(feature = "shape")]
 pub mod shape;
 pub mod sphere;
-pub mod plane;
 
 bitflags::bitflags!(
     /// Types of optional vertex streams.

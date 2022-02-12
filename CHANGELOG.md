@@ -1,5 +1,10 @@
 # Change Log
 
+## baryon-0.4 (TBD)
+  - gltf lights
+  - plane geometry
+  - `lyon` integration for 2D shapes
+
 ## baryon-0.3 (2021-09-18)
   - based on `baryon-core-0.1`
   - solid-color pass

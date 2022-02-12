@@ -5,6 +5,9 @@
 
 Baryon is a compact 3D engine focused on fast prototyping in code.
 No big dependencies, no fancy run-times, GUI editors, or other magic.
+It's heavily ECS-oriented, and could be used as a foundation for high-level engines.
+
+See [the slides](https://hackmd.io/@kvark/baryon/) from the Rust-GameDev [talk on Feb 2022](https://youtu.be/adt63Gqt6yA?t=1907).
 
 Dependency highlights:
   - [wgpu](https://github.com/gfx-rs/wgpu) for GPU access
